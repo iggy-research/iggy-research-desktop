@@ -28,6 +28,7 @@ const $ = <T extends HTMLElement>(s: string) => document.querySelector(s) as T;
 let store: Store;
 let settings: AiSettings = { ...DEFAULT_SETTINGS };
 let appearance: Appearance = { ...DEFAULT_APPEARANCE };
+let autosave = true;
 let filePath: string | null = null;
 let draftName = "dokument.md"; // nazwa dla jeszcze niezapisanego pliku
 let dirty = false;
@@ -190,18 +191,23 @@ function setDirty(d: boolean) {
 // ---------- Files ----------
 const mdFilter = [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }];
 let saveTimer: number | undefined;
-// Zapisany już plik zapisuje się sam chwilę po każdej zmianie
+// Autozapis (włączany w ustawieniach): plik, który już jest na dysku, zapisuje się sam chwilę po zmianie.
+// Nowa notatka nadal wymaga pierwszego Ctrl+S, a pliku usuniętego z dysku nie odtwarzamy.
 function scheduleAutosave() {
   clearTimeout(saveTimer);
-  if (filePath) saveTimer = window.setTimeout(() => saveFile(), 800);
+  if (!autosave || !filePath) return;
+  const p = filePath;
+  saveTimer = window.setTimeout(async () => {
+    if (p === filePath && dirty && (await exists(p))) await saveFile();
+  }, 800);
 }
 /** Przed przejściem do innego pliku: zapisz bieżący. Zwraca false, gdy użytkownik anulował. */
 async function leaveCurrent(): Promise<boolean> {
   clearTimeout(saveTimer);
   if (!dirty) return true;
-  if (filePath) { await saveFile(); return true; }
-  if (!editor.getContent().trim()) return true;
-  const keep = await ask("Bieżący tekst nie jest zapisany. Zapisać go przed otwarciem innego pliku?", {
+  if (filePath && autosave && (await exists(filePath))) { await saveFile(); return true; }
+  if (!filePath && !editor.getContent().trim()) return true;
+  const keep = await ask("Bieżące zmiany nie są zapisane. Zapisać je przed otwarciem innego pliku?", {
     title: "Iggy Research", kind: "warning", okLabel: "Zapisz", cancelLabel: "Odrzuć",
   });
   if (keep) await saveFile();
@@ -649,6 +655,7 @@ function openSettings() {
   (f.debounceMs as HTMLInputElement).value = String(settings.debounceMs);
   (f.prompt as HTMLTextAreaElement).value = settings.prompt;
   (f.autoAnalyze as HTMLInputElement).checked = settings.autoAnalyze;
+  (f.autosave as HTMLInputElement).checked = autosave;
   dlg.onclose = async () => {
     if (dlg.returnValue !== "save") { applyAppearance(before); return; }
     appearance = readAppearance();
@@ -661,6 +668,9 @@ function openSettings() {
       prompt: f.prompt.value.trim() || DEFAULT_SETTINGS.prompt,
       autoAnalyze: f.autoAnalyze.checked,
     };
+    autosave = (f.autosave as HTMLInputElement).checked;
+    store.set("autosave", autosave);
+    if (autosave && dirty) scheduleAutosave(); else if (!autosave) clearTimeout(saveTimer);
     analyzed.clear();
     await store.set("settings", settings);
     await store.save();
@@ -673,6 +683,7 @@ function openSettings() {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   settings = { ...DEFAULT_SETTINGS, ...((await store.get<AiSettings>("settings")) ?? {}) };
   welcomeDir = (await store.get<string>("welcomeDir")) ?? null;
+  autosave = (await store.get<boolean>("autosave")) ?? true;
   appearance = { ...DEFAULT_APPEARANCE, ...((await store.get<Appearance>("appearance")) ?? {}) };
   applyAppearance(appearance);
   Object.assign(ui, (await store.get("ui")) ?? {});
