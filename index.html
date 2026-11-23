@@ -11,7 +11,7 @@
         <button data-cmd="library" title="Biblioteka plików (Ctrl+Shift+E)">☰</button>
         <span id="save-dot" class="new"></span>
         <span id="filename">Bez tytułu</span>
-        <button id="fav-star" title="Dodaj do ulubionych (Ctrl+Shift+D)" hidden>☆</button>
+        <button id="fav-star" title="Dodaj do ulubionych (Ctrl+Shift+D)" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
         <div class="spacer"></div>
         <button data-cmd="live" title="Podgląd na żywo: ukrywa znaczniki Markdown poza bieżącą linią (Ctrl+Shift+M)">Live</button>
         <button data-cmd="focus" title="Tryb skupienia (Ctrl+Shift+F)">Focus</button>
@@ -27,8 +27,8 @@
           <div class="lib-head">
             <strong id="lib-root" title="Katalog z notatkami">Brak katalogu</strong>
             <span>
-              <button id="lib-new" title="Nowa notatka (Ctrl+Shift+N)">＋</button>
-              <button id="lib-pick" title="Wybierz katalog">📁</button>
+              <button id="lib-new" title="Nowa notatka (Ctrl+Shift+N)" aria-label="Nowa notatka"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              <button id="lib-pick" title="Wybierz katalog" aria-label="Wybierz katalog"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.4 5H4.5A1.5 1.5 0 0 0 3 6.5z"/></svg></button>
             </span>
           </div>
           <input id="lib-filter" type="search" placeholder="Szukaj notatek… (Ctrl+Shift+O)" />

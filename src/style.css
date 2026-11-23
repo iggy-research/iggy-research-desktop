@@ -246,7 +246,9 @@ button.primary { background: var(--accent); color: #fff; }
 #wordmark em { font-style: italic; }
 
 /* Ulubione */
-#fav-star { font-size: 15px; padding: 0 4px; line-height: 1; color: var(--muted); }
+#fav-star { padding: 3px 6px; line-height: 0; }
+#fav-star svg { display: block; }
+#fav-star.on svg { fill: currentColor; }
 #fav-star.on { color: #f5b82e; }
 #toolbar > #fav-star.on { opacity: 1; }
 #lib-tree li.fav::before { content: "★ "; color: #f5b82e; font-size: .85em; }
@@ -276,3 +278,6 @@ dialog { max-height: 90vh; overflow-y: auto; }
 
 /* tabele w edytorze też na środku kolumny */
 .cm-lp-table table { margin: 0 auto; }
+.lib-head > span { display: flex; align-items: center; gap: 2px; }
+.lib-head button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; line-height: 0; }
+.lib-head button .icon { display: block; }

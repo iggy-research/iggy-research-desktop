@@ -180,7 +180,6 @@ function setDirty(d: boolean) {
   dot.className = state;
   const star = $("#fav-star");
   const fav = !!filePath && favorites.has(filePath);
-  star.textContent = fav ? "★" : "☆";
   star.classList.toggle("on", fav);
   star.hidden = !filePath;
   star.title = fav ? "Usuń z ulubionych" : "Dodaj do ulubionych";
@@ -303,7 +302,7 @@ function mediaError(msg: string) {
   ui.ai = true; apply();
   $("#ai-current").textContent = msg;
 }
-const NO_DIR = "Zapisz najpierw notatkę albo wybierz katalog biblioteki (📁), żeby było gdzie zapisać plik.";
+const NO_DIR = "Zapisz najpierw notatkę albo wybierz katalog biblioteki (ikona folderu obok plusa), żeby było gdzie zapisać plik.";
 
 // Przeciąganie plików z menedżera plików: media kopiujemy do załączników, notatki .md otwieramy
 let dropPos: number | undefined;
@@ -409,7 +408,7 @@ function renderLibrary() {
   const tree = $("#lib-tree");
   tree.innerHTML = "";
   if (!vault.root) {
-    tree.innerHTML = `<li class="empty">Wybierz katalog z notatkami (📁), żeby przeglądać pliki i łączyć je przez [[ ]].</li>`;
+    tree.innerHTML = `<li class="empty">Wybierz katalog z notatkami (ikona folderu obok plusa), żeby przeglądać pliki i łączyć je przez [[ ]].</li>`;
     renderBacklinks();
     return;
   }
