@@ -448,7 +448,7 @@ function renderLibrary() {
   for (const dir of dirs) {
     if (dir || favNotes.length || dirs.length > 1) tree.append(header(dir || fileName(vault.root)));
     const list = groups.get(dir)!;
-    list.sort((a, b) => Number(favorites.has(b.path)) - Number(favorites.has(a.path)) || a.name.localeCompare(b.name, "pl"));
+    list.sort((a, b) => Number(favorites.has(b.path)) - Number(favorites.has(a.path)) || welcomeRank(a) - welcomeRank(b) || a.name.localeCompare(b.name, "pl"));
     for (const n of list) tree.append(item(n));
   }
   if (!notes.length) tree.innerHTML = `<li class="empty">${q ? "Nic nie pasuje." : "Brak plików .md w tym katalogu."}</li>`;
@@ -580,6 +580,15 @@ window.addEventListener("keydown", (e) => {
 // ---------- Notatki powitalne ----------
 // Przy pierwszym uruchomieniu w Dokumentach powstaje katalog „Iggy Research” z notatkami
 // połączonymi przez [[ ]]. Intro jest zwykłym plikiem, który można edytować albo usunąć.
+// W katalogu powitalnym notatki idą w kolejności czytania (Witaj → … → Formatowanie), nie alfabetycznie
+const WELCOME_ORDER = Object.keys(WELCOME_NOTES);
+let welcomeDir: string | null = null;
+function welcomeRank(n: Note): number {
+  if (!welcomeDir || n.path !== joinPath(welcomeDir, n.rel) || n.rel.includes("/")) return WELCOME_ORDER.length;
+  const i = WELCOME_ORDER.indexOf(n.rel);
+  return i < 0 ? WELCOME_ORDER.length : i;
+}
+
 async function openWelcome() {
   let dir = (await store.get<string>("welcomeDir")) ?? null;
   if (!dir) {
@@ -588,6 +597,7 @@ async function openWelcome() {
     dir = joinPath(base, "Iggy Research");
     store.set("welcomeDir", dir);
   }
+  welcomeDir = dir;
   await mkdir(dir, { recursive: true });
   // brakujące notatki odtwarzamy, istniejących (być może zmienionych) nie ruszamy
   for (const [rel, text] of Object.entries(WELCOME_ASSETS)) {
@@ -662,6 +672,7 @@ function openSettings() {
 (async () => {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   settings = { ...DEFAULT_SETTINGS, ...((await store.get<AiSettings>("settings")) ?? {}) };
+  welcomeDir = (await store.get<string>("welcomeDir")) ?? null;
   appearance = { ...DEFAULT_APPEARANCE, ...((await store.get<Appearance>("appearance")) ?? {}) };
   applyAppearance(appearance);
   Object.assign(ui, (await store.get("ui")) ?? {});
