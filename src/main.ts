@@ -23,6 +23,7 @@ import { stat } from "@tauri-apps/plugin-fs";
 import * as pub from "./publish";
 import * as rss from "./rss";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -926,19 +927,40 @@ function openSync() {
     msg.textContent = t("sync.codeSent", { email });
     (f.code as HTMLInputElement).focus();
   });
+  // Google / Apple: logowanie w przeglądarce, powrót przez iggyresearch://auth?code=… (patrz handleDeepLink)
+  const socialRow = $("#sync-social"), browserBtn = $("#sync-browser");
+  sync.providers(f.server.value.trim() || DEFAULT_SERVER).then((p) => {
+    const names = [p.google && "Google", p.apple && "Apple"].filter(Boolean);
+    socialRow.hidden = !names.length || !!sync.account;
+    browserBtn.textContent = t("sync.browserLogin", { providers: names.join(" / ") });
+  }).catch(() => { socialRow.hidden = true; });
+  browserBtn.onclick = () => run(async () => {
+    const server = f.server.value.trim() || DEFAULT_SERVER;
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const verifier = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, (c) => ({ "+": "-", "/": "_", "=": "" }[c]!));
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    const challenge = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    pendingHandoff = { server, verifier };
+    await openUrl(`${server}/login?desktop=1&challenge=${challenge}`);
+    msg.textContent = t("sync.browserWaiting");
+  });
   const login = () => run(async () => {
     if (codeRow.hidden) return sendCode();
     const server = f.server.value.trim() || DEFAULT_SERVER, email = f.email.value.trim(), code = (f.code as HTMLInputElement).value.trim();
     if (!/^\d{6}$/.test(code)) { msg.textContent = t("sync.codeFormat"); return; }
     await sync.login(server, email, code);
     resetLogin();
+    await afterLogin();
+  });
+  afterLoginHook = async () => { await afterLogin(); };
+  const afterLogin = async () => {
     const remote = await sync.pullSettings().catch(() => null);
     if (remote && Object.keys(remote).length) await applySyncedSettings(remote);
     else await sync.pushSettings(syncedSettings());
     sync.startAuto();
     await show();
     await sync.sync().catch(() => {});
-  });
+  };
   loginBtn.onclick = () => login();
   resendBtn.onclick = () => { (f.code as HTMLInputElement).value = ""; codeRow.hidden = true; sendCode(); };
   (f.code as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); login(); } };
@@ -978,6 +1000,30 @@ function openSync() {
   dlg.showModal();
 }
 let gitRemote = "";
+
+// Logowanie przez przeglądarkę: verifier zna tylko ta aplikacja; strona dostaje sha256(verifier)
+let pendingHandoff: { server: string; verifier: string } | null = null;
+let afterLoginHook: (() => Promise<void>) | null = null;
+async function handleDeepLink(urls: string[]) {
+  for (const raw of urls) {
+    let u: URL;
+    try { u = new URL(raw); } catch { continue; }
+    if (u.protocol !== "iggyresearch:" || u.hostname !== "auth") continue;
+    const code = u.searchParams.get("code");
+    if (!code || !pendingHandoff) continue;
+    const { server, verifier } = pendingHandoff;
+    pendingHandoff = null;
+    try {
+      await sync.redeemHandoff(server, code, verifier);
+      await getCurrentWindow().setFocus().catch(() => {});
+      if (afterLoginHook) await afterLoginHook();
+      else { sync.startAuto(); sync.sync().catch(() => {}); }
+    } catch (e: any) {
+      $("#sync-status").textContent = `☁ ${e?.message ?? e}`;
+    }
+  }
+}
+onOpenUrl(handleDeepLink).catch(() => {});
 const DEFAULT_SERVER = "https://iggy-research.com"; // serwer Iggy; własny (self-hosting) w opcjach zaawansowanych
 
 // ---------- Publikacja ----------

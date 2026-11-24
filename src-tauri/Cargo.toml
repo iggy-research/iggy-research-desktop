@@ -19,5 +19,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-store = "2"
 tauri-plugin-http = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Linux/Windows: link iggyresearch:// trafia do działającej aplikacji, a nie otwiera drugiej kopii
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

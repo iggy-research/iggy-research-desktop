@@ -73,6 +73,21 @@ export class Sync {
     await this.d.store().set("syncState", null); // nowe konto = pełna synchronizacja od zera
   }
 
+  /** Logowanie przez przeglądarkę (Google / Apple): jednorazowy kod z linku + verifier znany tylko aplikacji. */
+  async redeemHandoff(server: string, code: string, verifier: string) {
+    const acc: Account = { server: server.trim().replace(/\/+$/, ""), token: "", username: "", email: "" };
+    const data = await this.api("auth/handoff/redeem", { method: "POST", body: JSON.stringify({ code, verifier }) }, acc);
+    this.account = { ...acc, token: data.token, username: data.user.username, email: data.user.email };
+    await this.d.store().set("syncAccount", this.account);
+    await this.d.store().set("syncState", null);
+  }
+
+  /** Jakie metody logowania oferuje serwer (przyciski Google / Apple tylko, gdy skonfigurowane). */
+  async providers(server: string): Promise<{ google: string | null; apple: string | null }> {
+    const res = await fetch(`${server.replace(/\/+$/, "")}/api/auth/providers`);
+    return res.ok ? res.json() : { google: null, apple: null };
+  }
+
   async logout(callServer = true) {
     if (callServer) await this.api("auth/logout", { method: "POST" }).catch(() => {});
     this.account = null; this.keys = null;

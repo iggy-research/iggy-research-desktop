@@ -20,6 +20,7 @@
     "fs:allow-remove",
     "fs:allow-read-file",
     "opener:default",
+    "deep-link:default",
     "fs:allow-stat",
     { "identifier": "fs:scope", "allow": [{ "path": "**" }] },
     { "identifier": "http:default", "allow": [{ "url": "https://*" }, { "url": "https://*/*" }, { "url": "http://*" }, { "url": "http://*/*" }] }
