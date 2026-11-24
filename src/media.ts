@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 /*
@@ -52,7 +53,7 @@ export function embedHtml(ref: string, opts: { width?: string; height?: string; 
   const name = esc(decodeURIComponent(ref.split(/[\\/]/).pop() ?? ref));
   const url = mediaUrl(ref);
   if (!kind) return "";
-  if (!url) return `<span class="media-missing">⚠ Nie znaleziono pliku: ${name}</span>`;
+  if (!url) return `<span class="media-missing">⚠ ${t("media.missing", { name })}</span>`;
   const size = `${opts.width ? ` width="${esc(opts.width)}"` : ""}${opts.height ? ` height="${esc(opts.height)}"` : ""}`;
   switch (kind) {
     case "image": return `<img src="${esc(url)}" alt="${esc(opts.alt || name)}"${size} loading="lazy">`;
@@ -60,6 +61,6 @@ export function embedHtml(ref: string, opts: { width?: string; height?: string; 
     case "audio": return `<div class="media-audio"><span>♪ ${name}</span><audio src="${esc(url)}" controls preload="metadata"></audio></div>`;
     case "pdf": return `<iframe class="media-pdf" src="${esc(url)}"${size}></iframe>`;
     case "unsupported":
-      return `<span class="media-unsupported">🎞 ${name}<small>Format .${extOf(ref)} nie jest obsługiwany przez wbudowany odtwarzacz. Przekonwertuj go do MP4 albo WebM.</small></span>`;
+      return `<span class="media-unsupported">🎞 ${name}<small>${t("media.unsupported", { ext: extOf(ref) })}</small></span>`;
   }
 }

@@ -11,7 +11,9 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASKS } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
+import { detectLanguage, DOC_LANGS } from "./lang";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -35,6 +37,9 @@ let filePath: string | null = null;
 let draftName = "dokument.md"; // nazwa dla jeszcze niezapisanego pliku
 let dirty = false;
 let favorites = new Set<string>(); // ścieżki ulubionych plików
+let langPrefs = { ui: "auto", doc: "auto" }; // język interfejsu i dokumentu ("auto" = system / wykrywanie)
+let detectedLang: string | null = null;
+const docLang = () => (langPrefs.doc === "auto" ? detectedLang : langPrefs.doc);
 let modelFavorites = new Set<string>(); // klucze ulubionych modeli
 let modelRecent: string[] = []; // ostatnio używane modele, najnowszy pierwszy
 const vault = new Vault();
@@ -55,14 +60,14 @@ async function runAnalysis(p: Paragraph) {
   const text = p.text.trim();
   if (text.length < 40 || /^(#|```|\|)/.test(text)) return; // pomijamy nagłówki, kod, tabele, krótkie
   const cur = $("#ai-current"), status = $("#ai-status");
-  if (analyzed.has(text)) { $("#ai-title").textContent = TASKS.analyze; cur.innerHTML = renderAi(analyzed.get(text)!); return; }
+  if (analyzed.has(text)) { $("#ai-title").textContent = taskLabel("analyze"); cur.innerHTML = renderAi(analyzed.get(text)!); return; }
   const missing = missingConfig(settings, "analyze");
   if (missing) { cur.textContent = missing; return; }
-  $("#ai-title").textContent = TASKS.analyze;
-  status.textContent = `analizuję… · ${modelInfo(modelFor(settings, "analyze")).name}`;
+  $("#ai-title").textContent = taskLabel("analyze");
+  status.textContent = `${t("ai.analyzing")} · ${modelInfo(modelFor(settings, "analyze")).name}`;
   cur.classList.remove("ai-empty");
   try {
-    const result = await analyzeParagraph(settings, text, editor.getContent(), (partial) => {
+    const result = await analyzeParagraph(settings, docLang(), text, editor.getContent(), (partial) => {
       cur.innerHTML = renderAi(partial);
     });
     analyzed.set(text, result);
@@ -70,7 +75,7 @@ async function runAnalysis(p: Paragraph) {
     status.textContent = "";
   } catch (e: any) {
     if (e?.name === "AbortError") return;
-    status.textContent = "błąd";
+    status.textContent = t("ai.error");
     cur.textContent = String(e?.message ?? e);
   }
 }
@@ -80,24 +85,24 @@ async function runNoteTask(task: Exclude<Task, "analyze">) {
   ui.ai = true; apply();
   const cur = $("#ai-current"), status = $("#ai-status");
   const doc = editor.getContent().trim();
-  $("#ai-title").textContent = TASKS[task];
+  $("#ai-title").textContent = taskLabel(task);
   cur.classList.remove("ai-empty");
-  if (doc.length < 40) { cur.textContent = "Notatka jest jeszcze za krótka."; return; }
+  if (doc.length < 40) { cur.textContent = t("ai.tooShort"); return; }
   const missing = missingConfig(settings, task);
   if (missing) { cur.textContent = missing; return; }
-  if (task === "links" && !vault.notes.length) { cur.textContent = "Wybierz katalog biblioteki, żeby było z czym łączyć notatkę."; return; }
-  status.textContent = `${task === "summary" ? "podsumowuję" : "szukam połączeń"}… · ${modelInfo(modelFor(settings, task)).name}`;
+  if (task === "links" && !vault.notes.length) { cur.textContent = t("ai.needLibrary"); return; }
+  status.textContent = `${t(task === "summary" ? "ai.summarizing" : "ai.linking")} · ${modelInfo(modelFor(settings, task)).name}`;
   cur.textContent = "";
   const onToken = (partial: string) => { cur.innerHTML = renderAi(partial); };
   try {
     const result = task === "summary"
-      ? await summarizeNote(settings, doc, onToken)
-      : await suggestLinks(settings, doc, currentNoteName(), vault.notes.map((n) => n.name), onToken);
-    pushHistory(`${TASKS[task]}: ${currentNoteName()}`, result);
+      ? await summarizeNote(settings, docLang(), doc, onToken)
+      : await suggestLinks(settings, docLang(), doc, currentNoteName(), vault.notes.map((n) => n.name), onToken);
+    pushHistory(`${taskLabel(task)}: ${currentNoteName()}`, result);
     status.textContent = "";
   } catch (e: any) {
     if (e?.name === "AbortError") return;
-    status.textContent = "błąd";
+    status.textContent = t("ai.error");
     cur.textContent = String(e?.message ?? e);
   }
 }
@@ -146,7 +151,17 @@ const editor = createEditor($("#editor"), (view, u) => {
 function updateStats() {
   const text = editor.getContent();
   const words = (text.match(/[\p{L}\p{N}'’-]+/gu) ?? []).length;
-  $("#stats").textContent = `${words} słów · ${text.length} znaków · ${Math.max(1, Math.round(words / 200))} min czytania`;
+  $("#stats").textContent = t("stats", { words, chars: text.length, min: Math.max(1, Math.round(words / 200)) });
+  scheduleLangDetect(text);
+}
+// Język dokumentu: wykrywany chwilę po zmianie; ustawia też język sprawdzania pisowni w edytorze
+let langTimer: number | undefined;
+function scheduleLangDetect(text: string) {
+  clearTimeout(langTimer);
+  langTimer = window.setTimeout(() => {
+    detectedLang = detectLanguage(text);
+    editor.setSpellLang(docLang() ?? uiLang());
+  }, 600);
 }
 
 function renderPreview() {
@@ -229,9 +244,9 @@ function setDirty(d: boolean) {
   const fav = !!filePath && favorites.has(filePath);
   star.classList.toggle("on", fav);
   star.hidden = !filePath;
-  star.title = fav ? "Usuń z ulubionych" : "Dodaj do ulubionych";
-  dot.title = { new: "Plik nie istnieje na dysku (Ctrl+S, aby zapisać)", dirty: "Niezapisane zmiany", saved: "Wszystkie zmiany zapisane" }[state];
-  getCurrentWindow().setTitle(`${name}${dirty ? " — edytowany" : ""} — Iggy Research`).catch(() => {});
+  star.title = t(fav ? "fav.remove" : "fav.add");
+  dot.title = t(`dot.${state}`);
+  getCurrentWindow().setTitle(`${name}${dirty ? t("file.edited") : ""} — Iggy Research`).catch(() => {});
 }
 
 // ---------- Files ----------
@@ -254,8 +269,8 @@ async function leaveCurrent(): Promise<boolean> {
   if (!dirty) return true;
   if (filePath && autosave && (await exists(filePath))) { await saveFile(); return true; }
   if (!filePath && !editor.getContent().trim()) return true;
-  const keep = await ask("Bieżące zmiany nie są zapisane. Zapisać je przed otwarciem innego pliku?", {
-    title: "Iggy Research", kind: "warning", okLabel: "Zapisz", cancelLabel: "Odrzuć",
+  const keep = await ask(t("ask.unsavedOpen"), {
+    title: "Iggy Research", kind: "warning", okLabel: t("ask.save"), cancelLabel: t("ask.discard"),
   });
   if (keep) await saveFile();
   return true;
@@ -328,7 +343,7 @@ setMediaResolver((raw) => {
 
 /** Katalog na wklejone i przeciągnięte pliki: „Załączniki” w bibliotece albo obok bieżącej notatki. */
 async function attachmentsDir(): Promise<string | null> {
-  const dir = vault.root ? joinPath(vault.root, "Załączniki") : filePath ? dirOf(filePath) : null;
+  const dir = vault.root ? joinPath(vault.root, t("lib.attachments")) : filePath ? dirOf(filePath) : null;
   if (dir) await mkdir(dir, { recursive: true });
   return dir;
 }
@@ -355,7 +370,7 @@ function mediaError(msg: string) {
   ui.ai = true; apply();
   $("#ai-current").textContent = msg;
 }
-const NO_DIR = "Zapisz najpierw notatkę albo wybierz katalog biblioteki (ikona folderu obok plusa), żeby było gdzie zapisać plik.";
+const NO_DIR = () => t("media.noDir");
 
 // Przeciąganie plików z menedżera plików: media kopiujemy do załączników, notatki .md otwieramy
 let dropPos: number | undefined;
@@ -375,7 +390,7 @@ getCurrentWebview().onDragDropEvent(async (ev) => {
   }
   try {
     const dir = await attachmentsDir();
-    if (!dir) { mediaError(NO_DIR); return; }
+    if (!dir) { mediaError(NO_DIR()); return; }
     const names: string[] = [];
     for (const src of media) {
       // plik już leży w bibliotece -> nie kopiujemy drugi raz
@@ -387,7 +402,7 @@ getCurrentWebview().onDragDropEvent(async (ev) => {
     await refreshVault();
     insertEmbeds(names, dropPos);
   } catch (e: any) {
-    mediaError(`Nie udało się dodać pliku: ${e?.message ?? e}`);
+    mediaError(t("media.addFail", { err: e?.message ?? e }));
   }
 }).catch(() => {});
 
@@ -401,7 +416,7 @@ function mediaDrop() {
       (async () => {
         try {
           const dir = await attachmentsDir();
-          if (!dir) { mediaError(NO_DIR); return; }
+          if (!dir) { mediaError(NO_DIR()); return; }
           const names: string[] = [];
           for (const f of files) {
             const stamp = new Date().toISOString().slice(0, 19).replace("T", " ").replace(/:/g, "");
@@ -413,7 +428,7 @@ function mediaDrop() {
           await refreshVault();
           insertEmbeds(names);
         } catch (err: any) {
-          mediaError(`Nie udało się wkleić obrazka: ${err?.message ?? err}`);
+          mediaError(t("media.pasteFail", { err: err?.message ?? err }));
         }
       })();
       return true;
@@ -448,8 +463,8 @@ async function refreshVault() {
 }
 async function newNote() {
   if (!vault.root) { await pickRoot(); if (!vault.root) return; }
-  let base = "Nowa notatka", i = 1;
-  while (vault.resolve(base)) base = `Nowa notatka ${++i}`;
+  let base = t("lib.newNote"), i = 1;
+  while (vault.resolve(base)) base = `${t("lib.newNote")} ${++i}`;
   await leaveCurrent();
   const note = await vault.create(base);
   await openPath(note.path);
@@ -457,11 +472,11 @@ async function newNote() {
 }
 
 function renderLibrary() {
-  $("#lib-root").textContent = vault.root ? fileName(vault.root) : "Brak katalogu";
+  $("#lib-root").textContent = vault.root ? fileName(vault.root) : t("lib.noRoot");
   const tree = $("#lib-tree");
   tree.innerHTML = "";
   if (!vault.root) {
-    tree.innerHTML = `<li class="empty">Wybierz katalog z notatkami (ikona folderu obok plusa), żeby przeglądać pliki i łączyć je przez [[ ]].</li>`;
+    tree.innerHTML = `<li class="empty">${t("lib.pickHint")}</li>`;
     renderBacklinks();
     return;
   }
@@ -497,14 +512,14 @@ function renderLibrary() {
     if (!groups.has(dir)) groups.set(dir, []);
     groups.get(dir)!.push(n);
   }
-  const dirs = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, "pl")));
+  const dirs = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, uiLang())));
   for (const dir of dirs) {
     if (dir || favNotes.length || dirs.length > 1) tree.append(header(dir || fileName(vault.root)));
     const list = groups.get(dir)!;
-    list.sort((a, b) => Number(favorites.has(b.path)) - Number(favorites.has(a.path)) || welcomeRank(a) - welcomeRank(b) || a.name.localeCompare(b.name, "pl"));
+    list.sort((a, b) => Number(favorites.has(b.path)) - Number(favorites.has(a.path)) || welcomeRank(a) - welcomeRank(b) || a.name.localeCompare(b.name, uiLang()));
     for (const n of list) tree.append(item(n));
   }
-  if (!notes.length) tree.innerHTML = `<li class="empty">${q ? "Nic nie pasuje." : "Brak plików .md w tym katalogu."}</li>`;
+  if (!notes.length) tree.innerHTML = `<li class="empty">${t(q ? "lib.noMatch" : "lib.noFiles")}</li>`;
   renderBacklinks();
 }
 
@@ -513,7 +528,7 @@ function renderBacklinks() {
   ul.innerHTML = "";
   const name = filePath ? fileName(filePath).replace(/\.(md|markdown|txt)$/i, "") : null;
   const links = name ? vault.backlinks(name, filePath) : [];
-  if (!links.length) { ul.innerHTML = `<li class="empty">Żadna notatka nie linkuje tutaj.</li>`; return; }
+  if (!links.length) { ul.innerHTML = `<li class="empty">${t("lib.noBacklinks")}</li>`; return; }
   for (const { note, snippet } of links) {
     const li = document.createElement("li");
     li.innerHTML = `${escapeHtml(note.name)}<small>${escapeHtml(snippet)}</small>`;
@@ -536,7 +551,7 @@ window.addEventListener("focus", () => { if (vault.root) refreshVault(); });
 // Kliknięcie nazwy pliku na pasku zamienia ją w pole edycji. Enter zatwierdza, Esc anuluje.
 // Zapisany plik jest od razu przemianowywany na dysku, niezapisany dostaje nazwę do okna zapisu.
 const nameEl = $("#filename");
-nameEl.title = "Kliknij, aby zmienić nazwę (F2)";
+nameEl.title = t("file.renameHint");
 function startRename() {
   const current = filePath ? filePath.split(/[\\/]/).pop()! : draftName;
   const input = document.createElement("input");
@@ -555,7 +570,7 @@ function startRename() {
       try {
         if (filePath) {
           const target = filePath.slice(0, filePath.length - current.length) + next;
-          if (await exists(target)) throw new Error(`Plik „${next}” już istnieje.`);
+          if (await exists(target)) throw new Error(t("rename.exists", { name: next }));
           await rename(filePath, target);
           if (favorites.delete(filePath)) { favorites.add(target); store.set("favorites", [...favorites]); }
           filePath = target;
@@ -566,7 +581,7 @@ function startRename() {
         }
       } catch (e: any) {
         $("#ai-status").textContent = "";
-        $("#ai-current").textContent = `Nie udało się zmienić nazwy: ${e?.message ?? e}`;
+        $("#ai-current").textContent = t("rename.fail", { err: e?.message ?? e });
       }
     }
     setDirty(dirty);
@@ -598,7 +613,7 @@ function apply() {
     const k = b.dataset.cmd as keyof typeof ui;
     if (k in ui) b.classList.toggle("on", k === "focus" ? ui.focus !== "off" : !!ui[k]);
   });
-  $('[data-cmd="focus"]').textContent = { off: "Focus", paragraph: "Focus: akapit", sentence: "Focus: zdanie" }[ui.focus];
+  $('[data-cmd="focus"]').textContent = t(`focus.${ui.focus}`);
   store?.set("ui", ui);
 }
 const toggle = (k: "typewriter" | "preview" | "ai" | "library" | "live") => { ui[k] = !ui[k]; apply(); if (!ui.preview) editor.view.focus(); };
@@ -698,7 +713,7 @@ function openSettings() {
   const before = { ...appearance };
   const bodySel = f.bodyFont as HTMLSelectElement, headSel = f.headingFont as HTMLSelectElement;
   const bodyCustom = f.bodyCustom as HTMLInputElement, headCustom = f.headingCustom as HTMLInputElement;
-  const size = f.fontSize as HTMLInputElement, sizeOut = f.fontSizeOut as HTMLOutputElement;
+  const size = f.fontSize as HTMLInputElement;
   fillSelect(bodySel, BODY_FONTS);
   fillSelect(headSel, HEADING_FONTS);
   bodySel.value = appearance.bodyFont; headSel.value = appearance.headingFont;
@@ -712,7 +727,7 @@ function openSettings() {
   const preview = () => {
     bodyCustom.hidden = bodySel.value !== "custom";
     headCustom.hidden = headSel.value !== "custom";
-    sizeOut.value = size.value;
+    $("#font-size-label").textContent = t("set.fontSize", { size: size.value });
     applyAppearance(readAppearance());
   };
   [bodySel, headSel, bodyCustom, headCustom, size].forEach((el) => (el.oninput = preview));
@@ -726,16 +741,17 @@ function openSettings() {
     picker.close();
     rows.after($("#model-picker")); // picker bywa wewnątrz listy wierszy — wyjmij go, zanim ją wyczyścimy
     rows.innerHTML = "";
-    for (const [task, label] of Object.entries(TASKS) as [Task, string][]) {
+    for (const task of TASK_LIST) {
+      const label = taskLabel(task);
       const key = draftModels[task];
       const m = modelInfo(key || draftModels.analyze);
       const row = document.createElement("div");
       row.className = "task-row";
       row.innerHTML = `<span>${label}</span><button type="button"></button>`;
       const btn = row.querySelector("button")!;
-      btn.innerHTML = `${escapeHtml(key ? m.name : `Jak analiza akapitu (${m.name})`)} <small>· ${escapeHtml(m.vendor)} · ${escapeHtml(formatPrice(m))}</small>`;
+      btn.innerHTML = `${escapeHtml(key ? m.name : t("task.inheritNamed", { name: m.name }))} <small>· ${escapeHtml(m.vendor)} · ${escapeHtml(formatPrice(m))}</small>`;
       btn.title = m.key;
-      btn.onclick = () => picker.open(row, key, task === "analyze" ? null : "Jak analiza akapitu", (k) => {
+      btn.onclick = () => picker.open(row, key, task === "analyze" ? null : t("task.inherit"), (k) => {
         draftModels[task] = k || (task === "analyze" ? draftModels.analyze : "");
         renderRows();
       });
@@ -763,7 +779,16 @@ function openSettings() {
   [localOllama, localLm, ollamaUrl, lmUrl].forEach((el) => (el.oninput = reloadLocal));
   renderRows();
   (f.debounceMs as HTMLInputElement).value = String(settings.debounceMs);
-  (f.prompt as HTMLTextAreaElement).value = settings.prompt;
+  // Pusty prompt = domyślny w języku dokumentu; pokazujemy go, żeby było co edytować
+  (f.prompt as HTMLTextAreaElement).value = settings.prompt || defaultPrompt("analyze", docLang());
+  // Język
+  const uiSel = f.uiLang as HTMLSelectElement, docSel = f.docLang as HTMLSelectElement;
+  uiSel.innerHTML = `<option value="auto">${t("set.uiLangAuto")}</option>` +
+    Object.entries(UI_LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  docSel.innerHTML = `<option value="auto">${t("set.docLangAuto")}</option>` +
+    Object.entries(DOC_LANGS).map(([k, v]) => `<option value="${k}">${v.native}</option>`).join("");
+  uiSel.value = langPrefs.ui; docSel.value = langPrefs.doc;
+  $("#doc-lang-detected").textContent = detectedLang ? `(${t("set.docLangDetected", { lang: DOC_LANGS[detectedLang].native })})` : "";
   (f.autoAnalyze as HTMLInputElement).checked = settings.autoAnalyze;
   (f.autosave as HTMLInputElement).checked = autosave;
   dlg.onclose = async () => {
@@ -781,23 +806,44 @@ function openSettings() {
       models: { ...draftModels, analyze: draftModels.analyze || DEFAULT_SETTINGS.models.analyze },
       ...readLocal(),
       debounceMs: Number(f.debounceMs.value) || DEFAULT_SETTINGS.debounceMs,
-      prompt: f.prompt.value.trim() || DEFAULT_SETTINGS.prompt,
+      prompt: isDefaultPrompt(f.prompt.value) ? "" : f.prompt.value.trim(),
       autoAnalyze: f.autoAnalyze.checked,
     };
     autosave = (f.autosave as HTMLInputElement).checked;
     store.set("autosave", autosave);
     if (autosave && dirty) scheduleAutosave(); else if (!autosave) clearTimeout(saveTimer);
     analyzed.clear();
+    const uiChanged = uiSel.value !== langPrefs.ui;
+    langPrefs = { ui: uiSel.value, doc: docSel.value };
+    store.set("language", langPrefs);
+    editor.setSpellLang(docLang() ?? uiLang());
+    if (uiChanged) applyLanguage();
     await store.set("settings", settings);
     await store.save();
   };
   dlg.showModal();
 }
 
+// ---------- Język ----------
+/** Ustawia język interfejsu i odświeża wszystko, co ma tekst. */
+function applyLanguage() {
+  setUiLang(langPrefs.ui);
+  applyI18n();
+  nameEl.title = t("file.renameHint");
+  apply();
+  setDirty(dirty);
+  renderLibrary();
+  updateStats();
+  if ($("#ai-current").classList.contains("ai-empty")) $("#ai-current").textContent = t("ai.empty");
+  picker.rebuild();
+}
+
 // ---------- Init ----------
 (async () => {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   settings = migrateSettings(await store.get("settings"));
+  langPrefs = { ...langPrefs, ...((await store.get<typeof langPrefs>("language")) ?? {}) };
+  applyLanguage();
   for (const k of (await store.get<string[]>("modelFavorites")) ?? []) modelFavorites.add(k);
   modelRecent = (await store.get<string[]>("modelRecent")) ?? [];
   refreshCatalog(); // w tle: lista modeli z OpenRoutera (cache 24 h) i modele lokalne
@@ -837,8 +883,8 @@ getCurrentWindow().onCloseRequested(async (e) => {
   try {
     if (filePath && autosave && (await exists(filePath))) await saveFile();
     else if (filePath || editor.getContent().trim()) {
-      const keep = await ask("Bieżące zmiany nie są zapisane. Zapisać je przed zamknięciem?", {
-        title: "Iggy Research", kind: "warning", okLabel: "Zapisz", cancelLabel: "Zamknij bez zapisu",
+      const keep = await ask(t("ask.unsavedClose"), {
+        title: "Iggy Research", kind: "warning", okLabel: t("ask.save"), cancelLabel: t("ask.closeNoSave"),
       });
       if (keep) { await saveFile(); if (dirty) return; } // anulowane okno „Zapisz jako” = zostajemy
     }

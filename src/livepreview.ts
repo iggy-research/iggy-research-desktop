@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { EditorState, Range } from "@codemirror/state";
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
@@ -82,7 +83,7 @@ class FootnoteRefWidget extends WidgetType {
     const s = document.createElement("sup");
     s.className = "cm-lp-fnref";
     s.textContent = this.label;
-    s.title = this.note || "Brak treści przypisu";
+    s.title = this.note || t("footnote.empty");
     return s;
   }
 }

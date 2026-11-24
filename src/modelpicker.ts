@@ -1,9 +1,10 @@
 /** Wybór modelu w ustawieniach: wyszukiwarka, zakładki (polecane / ulubione / ostatnie / lokalne / wszystkie), ceny. */
+import { t } from "./i18n";
 import { catalog, formatContext, formatPrice, modelInfo, ModelInfo, RECOMMENDED_KEYS, LOCAL_PROVIDERS } from "./models";
 
 type Tab = "recommended" | "fav" | "recent" | "local" | "all";
-const TABS: [Tab, string][] = [
-  ["recommended", "Polecane"], ["fav", "★ Ulubione"], ["recent", "Ostatnie"], ["local", "Lokalne"], ["all", "Wszystkie"],
+const TABS: [Tab, Parameters<typeof t>[0]][] = [
+  ["recommended", "mp.tabRecommended"], ["fav", "mp.tabFav"], ["recent", "mp.tabRecent"], ["local", "mp.tabLocal"], ["all", "mp.tabAll"],
 ];
 const LIMIT = 150;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -18,14 +19,14 @@ export interface PickerDeps {
 export function createModelPicker(root: HTMLElement, deps: PickerDeps) {
   root.innerHTML = `
     <div class="mp-bar">
-      <input type="search" class="mp-search" placeholder="Szukaj: nazwa, dostawca albo ID…" autocomplete="off" />
-      <button type="button" class="mp-refresh" title="Pobierz listę modeli od nowa">Odśwież</button>
+      <input type="search" class="mp-search" placeholder="${t("mp.search")}" autocomplete="off" />
+      <button type="button" class="mp-refresh" title="${t("mp.refreshHint")}">${t("mp.refresh")}</button>
     </div>
-    <div class="mp-tabs">${TABS.map(([t, l]) => `<button type="button" data-tab="${t}">${l}</button>`).join("")}</div>
+    <div class="mp-tabs">${TABS.map(([tb, l]) => `<button type="button" data-tab="${tb}">${t(l)}</button>`).join("")}</div>
     <ul class="mp-list"></ul>
     <div class="mp-custom">
-      <input type="text" placeholder="Własne ID: vendor/model albo ollama:nazwa" autocomplete="off" />
-      <button type="button">Użyj</button>
+      <input type="text" placeholder="${t("mp.customPh")}" autocomplete="off" />
+      <button type="button">${t("mp.use")}</button>
     </div>
     <div class="mp-status"></div>`;
   const search = root.querySelector<HTMLInputElement>(".mp-search")!;
@@ -59,12 +60,9 @@ export function createModelPicker(root: HTMLElement, deps: PickerDeps) {
   const rank = (m: ModelInfo) => (deps.favorites.has(m.key) ? 0 : RECOMMENDED_KEYS.has(m.key) ? 1 : 2);
 
   function empty(): string {
-    if (search.value.trim()) return "Nic nie pasuje. Możesz wpisać ID ręcznie poniżej.";
+    if (search.value.trim()) return t("mp.noMatch");
     return {
-      recommended: "", all: "Lista jeszcze się nie wczytała.",
-      fav: "Brak ulubionych — kliknij ☆ przy modelu, żeby go tu przypiąć.",
-      recent: "Tu pojawią się modele, których faktycznie użyłeś.",
-      local: "Włącz Ollamę albo LM Studio w sekcji „Modele lokalne” poniżej i uruchom serwer.",
+      recommended: "", all: t("mp.emptyAll"), fav: t("mp.emptyFav"), recent: t("mp.emptyRecent"), local: t("mp.emptyLocal"),
     }[tab];
   }
 
@@ -79,16 +77,16 @@ export function createModelPicker(root: HTMLElement, deps: PickerDeps) {
     }
     for (const m of items.slice(0, LIMIT)) {
       const fav = deps.favorites.has(m.key);
-      const meta = [formatPrice(m), m.context ? `${formatContext(m.context)} kontekstu` : "", m.note ?? ""].filter(Boolean).join(" · ");
+      const meta = [formatPrice(m), m.context ? t("mp.context", { ctx: formatContext(m.context) }) : "", m.note ? t(m.note) : ""].filter(Boolean).join(" · ");
       rows.push(`<li data-key="${esc(m.key)}" class="${m.key === current ? "selected" : ""}">
-        <button type="button" class="mp-star${fav ? " on" : ""}" title="${fav ? "Usuń z ulubionych" : "Dodaj do ulubionych"}">${fav ? "★" : "☆"}</button>
+        <button type="button" class="mp-star${fav ? " on" : ""}" title="${t(fav ? "fav.remove" : "fav.add")}">${fav ? "★" : "☆"}</button>
         <div class="mp-main"><span class="mp-name">${esc(m.name)}</span> <span class="mp-vendor">${esc(m.vendor)}</span>
         <div class="mp-meta">${esc(meta)}</div></div></li>`);
     }
-    if (items.length > LIMIT) rows.push(`<li class="mp-more">…i ${items.length - LIMIT} więcej — zawęź wyszukiwanie</li>`);
+    if (items.length > LIMIT) rows.push(`<li class="mp-more">${esc(t("mp.more", { n: items.length - LIMIT }))}</li>`);
     if (!items.length && empty()) rows.push(`<li class="mp-more">${esc(empty())}</li>`);
     list.innerHTML = rows.join("");
-    const parts = [`OpenRouter: ${catalog.status.openrouter ?? "wczytywanie…"}`];
+    const parts = [`OpenRouter: ${catalog.status.openrouter ?? t("mp.loading")}`];
     for (const [p, { label }] of Object.entries(LOCAL_PROVIDERS)) {
       const st = catalog.status[p as keyof typeof catalog.status];
       if (st) parts.push(`${label}: ${st}`);
@@ -123,7 +121,7 @@ export function createModelPicker(root: HTMLElement, deps: PickerDeps) {
   });
   const refreshBtn = root.querySelector<HTMLButtonElement>(".mp-refresh")!;
   refreshBtn.onclick = async () => {
-    refreshBtn.disabled = true; status.textContent = "Pobieram listę…";
+    refreshBtn.disabled = true; status.textContent = t("mp.refreshing");
     try { await deps.refresh(); } finally { refreshBtn.disabled = false; render(); }
   };
 
@@ -141,6 +139,15 @@ export function createModelPicker(root: HTMLElement, deps: PickerDeps) {
       search.focus();
     },
     close() { root.hidden = true; },
+    /** Po zmianie języka interfejsu: odśwież stałe napisy. */
+    rebuild() {
+      search.placeholder = t("mp.search");
+      refreshBtn.textContent = t("mp.refresh"); refreshBtn.title = t("mp.refreshHint");
+      root.querySelectorAll<HTMLButtonElement>(".mp-tabs button").forEach((b, i) => (b.textContent = t(TABS[i][1])));
+      custom.placeholder = t("mp.customPh");
+      root.querySelector<HTMLButtonElement>(".mp-custom button")!.textContent = t("mp.use");
+      if (!root.hidden) render();
+    },
     render,
   };
 }

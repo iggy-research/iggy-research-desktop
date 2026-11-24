@@ -6,6 +6,8 @@
  *   - lokalne:     "ollama:llama3.2" / "lmstudio:qwen3-8b"
  */
 
+import { t, Key } from "./i18n";
+
 export type Provider = "openrouter" | "ollama" | "lmstudio";
 
 export interface ModelInfo {
@@ -17,7 +19,7 @@ export interface ModelInfo {
   prompt?: number;     // $ za token wejścia
   completion?: number; // $ za token wyjścia
   context?: number;    // okno kontekstu w tokenach
-  note?: string;       // krótki opis (tylko polecane)
+  note?: Key;          // klucz krótkiego opisu (tylko polecane)
 }
 
 export const LOCAL_PROVIDERS: Record<Exclude<Provider, "openrouter">, { label: string; defaultUrl: string }> = {
@@ -27,22 +29,22 @@ export const LOCAL_PROVIDERS: Record<Exclude<Provider, "openrouter">, { label: s
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
-/** Polecane do roli redaktora; dane zastępcze, gdy nie ma internetu (stan z 2026-11). */
+/** Polecane do roli redaktora; dane zastępcze, gdy nie ma internetu (stan z 2026-11). Opisy to klucze i18n. */
 const RECOMMENDED: ModelInfo[] = [
-  or("anthropic/claude-sonnet-5.5", "Claude Sonnet 5.5", "Anthropic", 2, 10, 1e6, "najlepszy balans jakości i ceny, świetny polski"),
-  or("anthropic/claude-haiku-5.5", "Claude Haiku 5.5", "Anthropic", 0.1, 0.5, 1e6, "szybki i tani, dobry do auto-analizy"),
-  or("anthropic/claude-opus-5.5", "Claude Opus 5.5", "Anthropic", 4, 20, 1e6, "głębsza redakcja i argumentacja"),
-  or("anthropic/claude-fable-5.2", "Claude Fable 5.2", "Anthropic", 8, 40, 1e6, "najmocniejszy, najdroższy"),
-  or("openai/gpt-6.2-sol", "GPT-6.2 Sol", "OpenAI", 2, 10, 1.05e6, "mocny model ogólny"),
-  or("openai/gpt-6-luna", "GPT-6 Luna", "OpenAI", 0.1, 0.5, 1.05e6, "bardzo tani"),
-  or("google/gemini-4-neon", "Gemini 4 Neon", "Google", 3, 15, 1048576, "flagowy Gemini"),
-  or("google/gemini-3.8-flash", "Gemini 3.8 Flash", "Google", 0.825, 4.125, 1048576, "szybki, tani"),
-  or("mistralai/mistral-large-4-0", "Mistral Large 4", "Mistral", 0.7, 2.1, 1048576, "europejski, tani"),
-  or("deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash", "DeepSeek", 0.14, 0.42, 1048576, "najtańszy"),
+  or("anthropic/claude-sonnet-5.5", "Claude Sonnet 5.5", "Anthropic", 2, 10, 1e6, "note.sonnet"),
+  or("anthropic/claude-haiku-5.5", "Claude Haiku 5.5", "Anthropic", 0.1, 0.5, 1e6, "note.haiku"),
+  or("anthropic/claude-opus-5.5", "Claude Opus 5.5", "Anthropic", 4, 20, 1e6, "note.opus"),
+  or("anthropic/claude-fable-5.2", "Claude Fable 5.2", "Anthropic", 8, 40, 1e6, "note.fable"),
+  or("openai/gpt-6.2-sol", "GPT-6.2 Sol", "OpenAI", 2, 10, 1.05e6, "note.gpt"),
+  or("openai/gpt-6-luna", "GPT-6 Luna", "OpenAI", 0.1, 0.5, 1.05e6, "note.luna"),
+  or("google/gemini-4-neon", "Gemini 4 Neon", "Google", 3, 15, 1048576, "note.gemini"),
+  or("google/gemini-3.8-flash", "Gemini 3.8 Flash", "Google", 0.825, 4.125, 1048576, "note.flash"),
+  or("mistralai/mistral-large-4-0", "Mistral Large 4", "Mistral", 0.7, 2.1, 1048576, "note.mistral"),
+  or("deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash", "DeepSeek", 0.14, 0.42, 1048576, "note.deepseek"),
 ];
 export const RECOMMENDED_KEYS = new Set(RECOMMENDED.map((m) => m.key));
 
-function or(id: string, name: string, vendor: string, inM: number, outM: number, context: number, note: string): ModelInfo {
+function or(id: string, name: string, vendor: string, inM: number, outM: number, context: number, note: Key): ModelInfo {
   return { key: id, provider: "openrouter", id, name, vendor, prompt: inM / 1e6, completion: outM / 1e6, context, note };
 }
 
@@ -142,12 +144,12 @@ export async function loadCatalog(
       const models = await fetchOpenRouterModels();
       merge(models);
       fresh = { at: Date.now(), models };
-      catalog.status.openrouter = `${models.length} modeli`;
+      catalog.status.openrouter = t("mp.count", { n: models.length });
     } catch (e: any) {
-      catalog.status.openrouter = cache ? "offline — lista z pamięci" : "offline — tylko polecane";
+      catalog.status.openrouter = t(cache ? "mp.offlineCache" : "mp.offline");
     }
   } else {
-    catalog.status.openrouter = `${cache.models.length} modeli`;
+    catalog.status.openrouter = t("mp.count", { n: cache.models.length });
   }
   for (const p of Object.keys(LOCAL_PROVIDERS) as Exclude<Provider, "openrouter">[]) {
     for (const [k, m] of catalog.models) if (m.provider === p) catalog.models.delete(k);
@@ -155,9 +157,9 @@ export async function loadCatalog(
     try {
       const models = await fetchLocalModels(p, localUrls);
       merge(models);
-      catalog.status[p] = models.length ? `${models.length} modeli` : "brak modeli";
+      catalog.status[p] = models.length ? t("mp.count", { n: models.length }) : t("mp.noModels");
     } catch {
-      catalog.status[p] = "niedostępny";
+      catalog.status[p] = t("mp.unavailable");
     }
   }
   return fresh;
@@ -181,14 +183,14 @@ export function modelInfo(key: string): ModelInfo {
 // ---------- Formatowanie ----------
 
 export function formatPrice(m: ModelInfo): string {
-  if (m.provider !== "openrouter") return "lokalnie, za darmo";
-  if (m.prompt === undefined || m.completion === undefined) return "cena zmienna";
-  if (m.prompt === 0 && m.completion === 0) return "za darmo";
+  if (m.provider !== "openrouter") return t("price.local");
+  if (m.prompt === undefined || m.completion === undefined) return t("price.variable");
+  if (m.prompt === 0 && m.completion === 0) return t("price.free");
   const f = (v: number) => {
     const x = v * 1e6;
     return "$" + (x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(2).replace(/\.?0+$/, "") : x.toPrecision(2).replace(/\.?0+$/, ""));
   };
-  return `${f(m.prompt)} / ${f(m.completion)} za 1M tok.`;
+  return t("price.per1m", { in: f(m.prompt), out: f(m.completion) });
 }
 
 export function formatContext(n?: number): string {

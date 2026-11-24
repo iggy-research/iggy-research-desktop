@@ -101,6 +101,8 @@ export interface EditorHandle {
   setFocus(mode: FocusMode): void;
   setTypewriter(on: boolean): void;
   setLive(on: boolean): void;
+  /** Język tekstu dla sprawdzania pisowni (atrybut lang). */
+  setSpellLang(lang: string): void;
   setContent(text: string): void;
   getContent(): string;
 }
@@ -110,7 +112,7 @@ export function createEditor(
   onChange: (view: EditorView, u: ViewUpdate) => void,
   extra: Extension = [],
 ): EditorHandle {
-  const focusC = new Compartment(), twC = new Compartment(), liveC = new Compartment();
+  const focusC = new Compartment(), twC = new Compartment(), liveC = new Compartment(), langC = new Compartment();
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -127,6 +129,7 @@ export function createEditor(
         liveC.of(livePreview),
         EditorView.updateListener.of((u) => { if (u.docChanged || u.selectionSet) onChange(u.view, u); }),
         EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "off" }),
+        langC.of([]),
         extra,
       ],
     }),
@@ -137,6 +140,7 @@ export function createEditor(
       view.dispatch({ effects: focusC.reconfigure(mode === "off" ? [] :
         [focusPlugin(mode), EditorView.editorAttributes.of({ class: "cm-focusmode" })]) });
     },
+    setSpellLang: (lang) => view.dispatch({ effects: langC.reconfigure(EditorView.contentAttributes.of({ lang })) }),
     setLive: (on) => view.dispatch({ effects: liveC.reconfigure(on ? livePreview : []) }),
     setTypewriter: (on) => view.dispatch({ effects: twC.reconfigure(on ? [typewriterPlugin, typewriterTheme] : []) }),
     // Wczytanie innego pliku nie trafia do historii, więc Ctrl+Z nie cofnie do poprzedniej notatki

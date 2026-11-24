@@ -8,33 +8,33 @@
   <body>
     <div id="app">
       <header id="toolbar">
-        <button data-cmd="library" title="Biblioteka plików (Ctrl+Shift+E)">☰</button>
+        <button data-cmd="library" data-i18n-title="tb.library">☰</button>
         <span id="save-dot" class="new"></span>
-        <span id="filename">Bez tytułu</span>
-        <button id="fav-star" title="Dodaj do ulubionych (Ctrl+Shift+D)" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
+        <span id="filename" data-i18n="file.untitled"></span>
+        <button id="fav-star" data-i18n-title="tb.fav" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
         <div class="spacer"></div>
-        <button data-cmd="live" title="Podgląd na żywo: ukrywa znaczniki Markdown poza bieżącą linią (Ctrl+Shift+M)">Live</button>
-        <button data-cmd="focus" title="Tryb skupienia (Ctrl+Shift+F)">Focus</button>
-        <button data-cmd="typewriter" title="Maszyna do pisania (Ctrl+Shift+T)">Typewriter</button>
-        <button data-cmd="preview" title="Podgląd (Ctrl+P)">Podgląd</button>
-        <button data-cmd="ai" title="Panel AI (Ctrl+Shift+A)">AI</button>
-        <button data-cmd="theme" title="Jasny / ciemny">◐</button>
-        <button data-cmd="help" title="Notatki powitalne (F1)">?</button>
-        <button data-cmd="settings" title="Ustawienia">⚙</button>
+        <button data-cmd="live" data-i18n-title="tb.live">Live</button>
+        <button data-cmd="focus" data-i18n-title="tb.focus">Focus</button>
+        <button data-cmd="typewriter" data-i18n-title="tb.typewriter">Typewriter</button>
+        <button data-cmd="preview" data-i18n-title="tb.preview" data-i18n="tb.previewLabel"></button>
+        <button data-cmd="ai" data-i18n-title="tb.ai">AI</button>
+        <button data-cmd="theme" data-i18n-title="tb.theme">◐</button>
+        <button data-cmd="help" data-i18n-title="tb.help">?</button>
+        <button data-cmd="settings" data-i18n-title="tb.settings">⚙</button>
       </header>
       <main id="main">
         <aside id="library">
           <div class="lib-head">
-            <strong id="lib-root" title="Katalog z notatkami">Brak katalogu</strong>
+            <strong id="lib-root" data-i18n-title="lib.root"></strong>
             <span>
-              <button id="lib-new" title="Nowa notatka (Ctrl+Shift+N)" aria-label="Nowa notatka"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-              <button id="lib-pick" title="Wybierz katalog" aria-label="Wybierz katalog"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.4 5H4.5A1.5 1.5 0 0 0 3 6.5z"/></svg></button>
+              <button id="lib-new" data-i18n-title="lib.new" data-i18n-aria="lib.newNote"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              <button id="lib-pick" data-i18n-title="lib.pick" data-i18n-aria="lib.pick"><svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.4 5H4.5A1.5 1.5 0 0 0 3 6.5z"/></svg></button>
             </span>
           </div>
-          <input id="lib-filter" type="search" placeholder="Szukaj notatek… (Ctrl+Shift+O)" />
+          <input id="lib-filter" type="search" data-i18n-placeholder="lib.filter" />
           <ul id="lib-tree"></ul>
           <div id="lib-backlinks">
-            <div class="lib-sub">Linki zwrotne</div>
+            <div class="lib-sub" data-i18n="lib.backlinks"></div>
             <ul id="backlinks"></ul>
           </div>
         </aside>
@@ -42,16 +42,16 @@
         <article id="preview" hidden></article>
         <aside id="ai-panel">
           <div class="ai-head">
-            <strong id="ai-title">Analiza akapitu</strong>
+            <strong id="ai-title" data-i18n="ai.title"></strong>
             <span id="ai-status"></span>
           </div>
           <div class="ai-actions">
-            <button id="ai-summary" title="Podsumuj notatkę: teza, punkty, pytania">Podsumuj</button>
-            <button id="ai-links" title="Zaproponuj linki do innych notatek">Linki</button>
+            <button id="ai-summary" data-i18n-title="ai.summaryHint" data-i18n="ai.summary"></button>
+            <button id="ai-links" data-i18n-title="ai.linksHint" data-i18n="ai.links"></button>
           </div>
-          <div id="ai-current" class="ai-empty">Zacznij pisać — analiza pojawi się po chwili przerwy.</div>
+          <div id="ai-current" class="ai-empty" data-i18n="ai.empty"></div>
           <details id="ai-history-wrap">
-            <summary>Historia</summary>
+            <summary data-i18n="ai.history"></summary>
             <ol id="ai-history"></ol>
           </details>
         </aside>
@@ -65,48 +65,55 @@
 
     <dialog id="settings-dialog">
       <form method="dialog">
-        <h2>Ustawienia</h2>
-        <h3>Wygląd</h3>
+        <h2 data-i18n="set.title"></h2>
+        <h3 data-i18n="set.language"></h3>
+        <label><span data-i18n="set.uiLang"></span>
+          <select name="uiLang"></select>
+        </label>
+        <label><span data-i18n="set.docLang"></span> <small id="doc-lang-detected" class="hint"></small>
+          <select name="docLang"></select>
+        </label>
+        <h3 data-i18n="set.appearance"></h3>
         <div class="font-row">
-          <label>Czcionka tekstu
+          <label><span data-i18n="set.bodyFont"></span>
             <select name="bodyFont"></select>
           </label>
           <input type="text" name="bodyCustom" placeholder="np. Helvetica Neue" hidden />
         </div>
         <div class="font-row">
-          <label>Czcionka nagłówków
+          <label><span data-i18n="set.headingFont"></span>
             <select name="headingFont"></select>
           </label>
           <input type="text" name="headingCustom" placeholder="np. Baskerville" hidden />
         </div>
-        <label>Rozmiar tekstu: <output name="fontSizeOut"></output> px
+        <label><span id="font-size-label"></span>
           <input type="range" name="fontSize" min="13" max="26" step="1" />
         </label>
         <div id="font-sample">
-          <div class="sample-h">Granica wciąż pozostaje otwarta</div>
-          <p>Zażółć gęślą jaźń. Pisanie to myślenie na papierze, a <em>dobry tekst</em> rodzi się z <strong>uważności</strong>.</p>
+          <div class="sample-h" data-i18n="set.sampleH"></div>
+          <p data-i18n-html="set.sampleP"></p>
         </div>
 
-        <h3>Pliki</h3>
-        <label class="row"><input type="checkbox" name="autosave" /> Autozapis — zapisuj plik chwilę po każdej zmianie (tylko pliki, które już są na dysku)</label>
+        <h3 data-i18n="set.files"></h3>
+        <label class="row"><input type="checkbox" name="autosave" /> <span data-i18n="set.autosave"></span></label>
 
-        <h3>Redaktor AI</h3>
-        <label>Klucz OpenRouter
+        <h3 data-i18n="set.ai"></h3>
+        <label><span data-i18n="set.apiKey"></span>
           <input type="password" name="apiKey" placeholder="sk-or-..." autocomplete="off" />
         </label>
-        <div class="field-label">Modele do zadań</div>
+        <div class="field-label" data-i18n="set.taskModels"></div>
         <div id="task-models"></div>
         <div id="model-picker" hidden></div>
-        <label>Opóźnienie analizy (ms)
+        <label><span data-i18n="set.debounce"></span>
           <input type="number" name="debounceMs" min="300" step="100" />
         </label>
-        <label>Prompt analizy
+        <label><span data-i18n="set.prompt"></span> <small class="hint" data-i18n="set.promptHint"></small>
           <textarea name="prompt" rows="8"></textarea>
         </label>
-        <label class="row"><input type="checkbox" name="autoAnalyze" /> Analizuj automatycznie podczas pisania</label>
+        <label class="row"><input type="checkbox" name="autoAnalyze" /> <span data-i18n="set.autoAnalyze"></span></label>
 
-        <h3>Modele lokalne</h3>
-        <p class="hint">Praca offline, a tekst nie opuszcza komputera. Modele pojawią się w zakładce „Lokalne”.</p>
+        <h3 data-i18n="set.local"></h3>
+        <p class="hint" data-i18n="set.localHint"></p>
         <div class="local-row">
           <label class="row"><input type="checkbox" name="localOllama" /> Ollama</label>
           <input type="text" name="ollamaUrl" placeholder="http://localhost:11434" autocomplete="off" />
@@ -115,10 +122,10 @@
           <label class="row"><input type="checkbox" name="localLmstudio" /> LM Studio</label>
           <input type="text" name="lmstudioUrl" placeholder="http://localhost:1234" autocomplete="off" />
         </div>
-        <p class="hint">LM Studio: w zakładce Developer uruchom serwer i włącz „Enable CORS”.</p>
+        <p class="hint" data-i18n="set.lmstudioHint"></p>
         <menu>
-          <button value="cancel">Anuluj</button>
-          <button value="save" class="primary">Zapisz</button>
+          <button value="cancel" data-i18n="set.cancel"></button>
+          <button value="save" class="primary" data-i18n="set.save"></button>
         </menu>
       </form>
     </dialog>

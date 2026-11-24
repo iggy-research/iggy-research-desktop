@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { readDir, readTextFile, writeTextFile, exists, mkdir } from "@tauri-apps/plugin-fs";
 import { kindOf } from "./media";
 
@@ -102,7 +103,7 @@ export class Vault {
 
   /** Tworzy notatkę "<root>/<name>.md" (z podkatalogami, jeśli nazwa zawiera "/"). */
   async create(name: string): Promise<Note> {
-    if (!this.root) throw new Error("Najpierw wybierz katalog z notatkami.");
+    if (!this.root) throw new Error(t("lib.pickFirst"));
     const parts = name.split("/").map((p) => p.trim().replace(/[\\:*?"<>|]/g, "-")).filter(Boolean);
     const file = parts.pop()! + ".md";
     const dir = parts.length ? join(this.root, ...parts) : this.root;

@@ -1,3 +1,4 @@
+import { t, Key } from "./i18n";
 // Kroje dołączone do aplikacji (wszystkie na licencji SIL OFL 1.1)
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/700.css";
@@ -29,22 +30,22 @@ export const DEFAULT_APPEARANCE: Appearance = {
 const MONO = "ui-monospace, Menlo, monospace", SERIF = "Georgia, serif", SANS = "system-ui, sans-serif";
 
 export const BODY_FONTS: Record<string, { label: string; css: string }> = {
-  "plex-mono": { label: "IBM Plex Mono (domyślna)", css: `"IBM Plex Mono", ${MONO}` },
+  "plex-mono": { label: "font.plexMono", css: `"IBM Plex Mono", ${MONO}` },
   "jetbrains": { label: "JetBrains Mono", css: `"JetBrains Mono", ${MONO}` },
   "plex-sans": { label: "IBM Plex Sans", css: `"IBM Plex Sans", ${SANS}` },
   "plex-serif": { label: "IBM Plex Serif", css: `"IBM Plex Serif", ${SERIF}` },
-  "garamond": { label: "EB Garamond (książkowa)", css: `"EB Garamond", ${SERIF}` },
-  "system-sans": { label: "Systemowa bezszeryfowa", css: SANS },
-  "system-serif": { label: "Systemowa szeryfowa", css: `"Iowan Old Style", "Palatino Linotype", Palatino, ${SERIF}` },
+  "garamond": { label: "font.garamond", css: `"EB Garamond", ${SERIF}` },
+  "system-sans": { label: "font.systemSans", css: SANS },
+  "system-serif": { label: "font.systemSerif", css: `"Iowan Old Style", "Palatino Linotype", Palatino, ${SERIF}` },
 };
 
 export const HEADING_FONTS: Record<string, { label: string; css: string; bold: boolean }> = {
-  "instrument": { label: "Instrument Serif (klasyczna)", css: `"Instrument Serif", ${SERIF}`, bold: false },
-  "cormorant": { label: "Cormorant Garamond (renesansowa)", css: `"Cormorant Garamond", ${SERIF}`, bold: false },
+  "instrument": { label: "font.instrument", css: `"Instrument Serif", ${SERIF}`, bold: false },
+  "cormorant": { label: "font.cormorant", css: `"Cormorant Garamond", ${SERIF}`, bold: false },
   "garamond": { label: "EB Garamond", css: `"EB Garamond", ${SERIF}`, bold: false },
   "plex-serif": { label: "IBM Plex Serif", css: `"IBM Plex Serif", ${SERIF}`, bold: true },
   "plex-sans": { label: "IBM Plex Sans", css: `"IBM Plex Sans", ${SANS}`, bold: true },
-  "body": { label: "Taka sama jak tekst", css: "var(--font-body)", bold: true },
+  "body": { label: "font.sameAsBody", css: "var(--font-body)", bold: true },
 };
 
 const quote = (name: string) => `"${name.replace(/["\\]/g, "")}"`;
@@ -62,8 +63,10 @@ export function applyAppearance(a: Appearance) {
   root.setProperty("--font-size", `${a.fontSize}px`);
 }
 
+/** Etykieta czcionki: klucz i18n („font.…”) albo nazwa własna kroju. */
+const label = (l: string) => (l.startsWith("font.") ? t(l as Key) : l);
 /** Wypełnia <select> opcjami i dopisuje „Własna…”. */
 export function fillSelect(sel: HTMLSelectElement, fonts: Record<string, { label: string }>) {
-  sel.innerHTML = Object.entries(fonts).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join("")
-    + `<option value="custom">Własna (zainstalowana w systemie)…</option>`;
+  sel.innerHTML = Object.entries(fonts).map(([k, f]) => `<option value="${k}">${label(f.label)}</option>`).join("")
+    + `<option value="custom">${t("font.custom")}</option>`;
 }
