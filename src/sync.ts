@@ -6,20 +6,27 @@
  * zsynchronizowany). Konflikt (plik zmieniony tu i na innym urządzeniu): wersja z serwera trafia do pliku,
  * a lokalna do kopii „<nazwa> (konflikt <data>).md”, która wysyła się jak nowa notatka. Nic nie ginie.
  */
-import { readTextFile, writeTextFile, remove, exists, mkdir } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile, readFile, writeFile, remove, exists, mkdir } from "@tauri-apps/plugin-fs";
 import type { Store } from "@tauri-apps/plugin-store";
-import { E2EKeys, decrypt, deriveKeys, encrypt, importKeys, makeCheck, newSalt, noteId, sha256, verifyCheck } from "./crypto";
+import { E2EKeys, decrypt, decryptBytes, deriveKeys, encrypt, encryptBytes, importKeys, makeCheck, newSalt, noteId, sha256, sha256Bytes, verifyCheck } from "./crypto";
 import { join } from "./vault";
 import { t } from "./i18n";
 
 export interface Account { server: string; token: string; username: string; email: string }
 interface FileState { key: string; version: number; hash: string }
-interface SyncState { seq: number; root: string; e2e: boolean; files: Record<string, FileState> } // files: rel -> stan
+interface SyncState {
+  seq: number; root: string; e2e: boolean;
+  files: Record<string, FileState>; // notatki: rel -> stan
+  assetSeq?: number; assets?: Record<string, FileState>; // załączniki: rel -> stan
+}
+const MAX_ASSET_BYTES = 25 * 1024 * 1024;
 
 export interface SyncDeps {
   store: () => Store;
   root: () => string | null;
   notes: () => { path: string; rel: string }[];
+  /** Załączniki biblioteki (obrazy, PDF, nagrania). */
+  assets: () => { path: string; rel: string }[];
   /** plik zmieniony przez synchronizację (do odświeżenia edytora i biblioteki) */
   changed: (paths: string[]) => Promise<void>;
   /** Czy notatka (ścieżka względna) ma być synchronizowana — wybór użytkownika: foldery i pojedyncze notatki. */
@@ -141,19 +148,23 @@ export class Sync {
   /** Ile notatek wysłanych wcześniej jest teraz wyłączonych z synchronizacji (ich kopie są na serwerze). */
   async excludedOnServer(): Promise<string[]> {
     const state = await this.d.store().get<SyncState>("syncState");
-    return state ? Object.keys(state.files).filter((rel) => !this.d.included(rel)) : [];
+    return state ? [...Object.keys(state.files), ...Object.keys(state.assets ?? {})].filter((rel) => !this.d.included(rel)) : [];
   }
 
   /** Usuwa z serwera kopie wyłączonych notatek (bez rekordu usunięcia — inne urządzenia zachowują pliki). */
   async purgeExcluded(): Promise<number> {
     const state = await this.d.store().get<SyncState>("syncState");
     if (!state) return 0;
+    const assets = state.assets ?? {};
     const rels = Object.keys(state.files).filter((rel) => !this.d.included(rel));
-    if (!rels.length) return 0;
-    await this.api("sync/purge", { method: "POST", body: JSON.stringify({ keys: rels.map((r) => state.files[r].key) }) });
+    const assetRels = Object.keys(assets).filter((rel) => !this.d.included(rel));
+    if (!rels.length && !assetRels.length) return 0;
+    const keys = [...rels.map((r) => state.files[r].key), ...assetRels.map((r) => assets[r].key)];
+    await this.api("sync/purge", { method: "POST", body: JSON.stringify({ keys }) });
     for (const r of rels) delete state.files[r]; // po ponownym włączeniu wyślą się jako nowe
+    for (const r of assetRels) delete assets[r];
     await this.d.store().set("syncState", state);
-    return rels.length;
+    return rels.length + assetRels.length;
   }
 
   /** Po poszerzeniu zakresu: pobierz wszystko od początku (wersje, które już mamy, zostaną pominięte). */
@@ -236,6 +247,9 @@ export class Sync {
           }
         }
       }
+      // 3. Załączniki (osobny licznik zmian)
+      await this.syncAssets(root, state, touched);
+
       await this.d.store().set("syncState", state);
       if (touched.length) await this.d.changed(touched);
       this.d.status(t("sync.done", { time: new Date().toLocaleTimeString() }));
@@ -249,6 +263,90 @@ export class Sync {
     return this.keys
       ? { key, path: await encrypt(this.keys, rel), content: text ? await encrypt(this.keys, text) : "", encrypted: true }
       : { key, path: rel, content: text, encrypted: false };
+  }
+
+  /** Zapytanie z tokenem bez ustawiania Content-Type (multipart, dane binarne). */
+  private async raw(path: string, init: RequestInit = {}) {
+    const acc = this.account!;
+    return fetch(`${acc.server.replace(/\/+$/, "")}/api/${path}`, { ...init, headers: { Authorization: `Token ${acc.token}`, ...init.headers } });
+  }
+
+  private async uploadAsset(key: string, rel: string, bytes: Uint8Array | null, hash: string, base: number) {
+    const fd = new FormData();
+    fd.append("key", key);
+    fd.append("path", this.keys ? await encrypt(this.keys, rel) : rel);
+    fd.append("base_version", String(base));
+    fd.append("encrypted", this.keys ? "true" : "false");
+    fd.append("device", this.d.device);
+    if (bytes) {
+      fd.append("sha256", hash);
+      const body = this.keys ? await encryptBytes(this.keys, bytes) : bytes;
+      fd.append("file", new Blob([body as BlobPart]), "asset");
+    } else fd.append("deleted", "true");
+    const res = await this.raw("sync/asset", { method: "POST", body: fd });
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  }
+
+  /** Załączniki: pobierz zmiany, potem wyślij lokalne (wersje i konflikty jak dla notatek). */
+  private async syncAssets(root: string, state: SyncState, touched: string[]) {
+    state.assets ??= {};
+    state.assetSeq ??= 0;
+    const assets = state.assets;
+    for (;;) {
+      const ch: { seq: number; more: boolean; assets: any[] } = await this.api(`sync/assets/changes?since=${state.assetSeq}`);
+      for (const a of ch.assets) await this.applyRemoteAsset(root, assets, a, touched);
+      state.assetSeq = ch.seq;
+      if (!ch.more) break;
+    }
+    const local = new Map(this.d.assets().filter((a) => !a.rel.startsWith(".") && this.d.included(a.rel)).map((a) => [a.rel, a.path]));
+    for (const [rel, path] of local) {
+      let bytes: Uint8Array;
+      try { bytes = await readFile(path); } catch { continue; }
+      if (bytes.length > MAX_ASSET_BYTES) continue; // za duży — zostaje tylko lokalnie
+      const hash = await sha256Bytes(bytes), prev = assets[rel];
+      if (prev?.hash === hash) continue;
+      const key = prev?.key ?? (this.keys ? await noteId(this.keys, `asset:${rel}`) : rel);
+      const r = await this.uploadAsset(key, rel, bytes, hash, prev?.version ?? 0);
+      if (r.data.status === "ok") assets[rel] = { key, version: r.data.version, hash };
+      else if (r.data.status === "conflict") await this.applyRemoteAsset(root, assets, r.data.server, touched, true);
+      else if (r.status >= 400) throw new Error(r.data.detail ?? r.data.error ?? `asset ${r.status}`);
+    }
+    for (const [rel, prev] of Object.entries(assets)) {
+      if (!this.d.included(rel) || local.has(rel) || (await exists(join(root, ...rel.split("/"))))) continue;
+      const r = await this.uploadAsset(prev.key, rel, null, "", prev.version);
+      if (r.data.status === "ok") delete assets[rel];
+    }
+  }
+
+  private async applyRemoteAsset(root: string, assets: Record<string, FileState>, a: any, touched: string[], conflict = false) {
+    const rel: string = a.encrypted ? await decrypt(this.keys!, a.path) : a.path;
+    if (!isSafeRel(rel) || !this.d.included(rel)) return;
+    const prev = assets[rel];
+    if (!conflict && prev && prev.key === a.key && prev.version >= a.version) return; // echo własnej wysyłki
+    const path = join(root, ...rel.split("/"));
+    let localHash: string | null = null;
+    if (await exists(path)) { try { localHash = await sha256Bytes(await readFile(path)); } catch { /* */ } }
+    const localChanged = localHash !== null && (conflict || (prev ? prev.hash !== localHash : true));
+    if (a.deleted) {
+      if (localHash !== null && !localChanged) await remove(path).catch(() => {});
+      if (localChanged) assets[rel] = { key: a.key, version: a.version, hash: "" }; // zmieniony tu: wyśle się ponownie
+      else delete assets[rel];
+      touched.push(path);
+      return;
+    }
+    if (localChanged && localHash !== a.sha256) {
+      const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-");
+      const copy = rel.replace(/(\.[^./]+)?$/, (ext) => ` (${t("sync.conflict")} ${stamp})${ext}`);
+      await writeBinarySafe(join(root, ...copy.split("/")), await readFile(path));
+      touched.push(join(root, ...copy.split("/")));
+    }
+    const res = await this.raw(`sync/asset?key=${encodeURIComponent(a.key)}`);
+    if (!res.ok) return;
+    let bytes: Uint8Array = new Uint8Array(await res.arrayBuffer());
+    if (a.encrypted) bytes = await decryptBytes(this.keys!, bytes);
+    await writeBinarySafe(path, bytes);
+    assets[rel] = { key: a.key, version: a.version, hash: await sha256Bytes(bytes) };
+    touched.push(path);
   }
 
   /** Zapisuje notatkę z serwera na dysk; gdy lokalny plik też się zmienił, zachowuje go jako kopię konfliktu. */
@@ -288,6 +386,12 @@ export class Sync {
 
 /** Nie pozwalamy serwerowi pisać poza katalogiem biblioteki. */
 const isSafeRel = (rel: string) => !!rel && !rel.startsWith("/") && !/^[a-z]:/i.test(rel) && !rel.split(/[\\/]/).some((p) => p === ".." || p === "");
+
+async function writeBinarySafe(path: string, bytes: Uint8Array) {
+  const dir = path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));
+  if (dir && !(await exists(dir))) await mkdir(dir, { recursive: true });
+  await writeFile(path, bytes);
+}
 
 async function writeFileSafe(path: string, text: string) {
   const dir = path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));

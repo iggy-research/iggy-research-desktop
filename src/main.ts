@@ -951,6 +951,7 @@ const sync = new Sync({
   store: () => store,
   root: () => vault.root,
   notes: () => vault.notes,
+  assets: () => vault.assets,
   included: (rel) => isSynced(rel),
   device: navigator.platform || "desktop",
   status: (msg, error) => { const el = $("#sync-status"); el.textContent = `☁ ${msg}`; el.classList.toggle("error", !!error); },

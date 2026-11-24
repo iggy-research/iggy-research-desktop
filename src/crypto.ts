@@ -61,3 +61,21 @@ export async function sha256(text: string): Promise<string> {
   const h = await crypto.subtle.digest("SHA-256", enc.encode(text));
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Szyfrowanie załączników (dane binarne): 12 bajtów IV + szyfrogram AES-GCM. */
+export async function encryptBytes(k: E2EKeys, data: Uint8Array): Promise<Uint8Array> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, k.aes, data as BufferSource));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv); out.set(ct, 12);
+  return out;
+}
+
+export async function decryptBytes(k: E2EKeys, data: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: data.slice(0, 12) }, k.aes, data.slice(12)));
+}
+
+export async function sha256Bytes(data: Uint8Array): Promise<string> {
+  const h = await crypto.subtle.digest("SHA-256", data as BufferSource);
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
