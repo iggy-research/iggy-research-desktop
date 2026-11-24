@@ -4,8 +4,8 @@ import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
 export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past"
-  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic"];
+  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic" | "connections" | "resurface";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic", "connections", "resurface"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -76,6 +76,13 @@ Odpowiedz WYŁĄCZNIE listą 5 pytań w Markdown (1. … 5.), każde jedno zdani
 Drąż: proś o definicje, przykłady, źródła pewności, konsekwencje i kontrprzykłady; wracaj do sprzeczności w odpowiedziach.
 Nie podawaj własnych tez, nie oceniaj, nie pisz za autora. Gdy autor napisze, że kończy (albo po ok. 8 pytaniach),
 podsumuj w 3 punktach, co ustalił — jego słowami — i jakie pytanie zostaje otwarte. Pisz w języku notatki.`,
+    connections: `Dostajesz bieżącą notatkę i fragmenty notatek autora z zupełnie innych tematów. Znajdź maks. 4 NIEOCZYWISTE połączenia:
+ten sam mechanizm, zasadę, wzorzec albo napięcie, które działa w bieżącej notatce i w notatce z innej dziedziny.
+Dla każdego: **[[Nazwa notatki]]** — wspólny mechanizm w jednym zdaniu → pytanie, które to połączenie otwiera.
+Używaj WYŁĄCZNIE nazw z listy, w zapisie [[Nazwa]]. Pomiń połączenia powierzchowne (to samo słowo). Jeśli nic nie ma, napisz to wprost. Pisz w języku notatki, w Markdown.`,
+    resurface: `Dostajesz bieżącą notatkę i notatki autora, których nie ruszał od miesięcy. Wskaż te porzucone myśli, które warto teraz podjąć,
+bo pasują do tego, nad czym autor pracuje. Dla każdej (maks. 4): **[[Nazwa notatki]]** (ostatnio zmieniana: data) — co tam zostało niedokończone → jak łączy się z bieżącą pracą → pytanie na start.
+Używaj WYŁĄCZNIE nazw z listy, w zapisie [[Nazwa]]. Pisz w języku notatki, w Markdown.`,
     precheck: `Kontrola przed publikacją. Nie oceniaj stylu i nie przepisuj tekstu. Wypisz w Markdown, w języku tekstu:
 **Do sprawdzenia** — fakty, liczby, daty, nazwiska i cytaty, które warto zweryfikować (cytuj fragment).
 **Niespójności** — miejsca, gdzie tekst przeczy sam sobie albo zmienia nazewnictwo.
@@ -126,6 +133,13 @@ Reply ONLY with a Markdown list of 5 questions (1. … 5.), one sentence each, i
 Dig deeper: ask for definitions, examples, sources of certainty, consequences and counterexamples; return to contradictions in the answers.
 Do not give your own theses, do not judge, do not write for the author. When the author says they are done (or after about 8 questions),
 summarize in 3 points what they established — in their words — and which question remains open. Write in the note's language.`,
+    connections: `You get the current note and excerpts from the author's notes on completely different topics. Find at most 4 NON-OBVIOUS connections:
+the same mechanism, principle, pattern or tension at work in the current note and in a note from another field.
+For each: **[[Note name]]** — the shared mechanism in one sentence → the question this connection opens.
+Use ONLY names from the list, written as [[Name]]. Skip superficial links (same word). If there is nothing, say so. Write in the note's language, in Markdown.`,
+    resurface: `You get the current note and the author's notes untouched for months. Point out the abandoned thoughts worth picking up now
+because they fit what the author is working on. For each (at most 4): **[[Note name]]** (last changed: date) — what was left unfinished → how it connects to the current work → a question to start with.
+Use ONLY names from the list, written as [[Name]]. Write in the note's language, in Markdown.`,
     precheck: `Pre-publication check. Do not judge style or rewrite the text. List in Markdown, in the text's language:
 **To verify** — facts, numbers, dates, names and quotes worth checking (quote the fragment).
 **Inconsistencies** — places where the text contradicts itself or changes naming.
@@ -144,7 +158,7 @@ export const isDefaultPrompt = (p: string) =>
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
   models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "",
-    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "" },
+    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "", connections: "", resurface: "" },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -281,3 +295,10 @@ export const textTool = (s: AiSettings, task: Exclude<Task, "analyze" | "summary
 export const socraticTurn = (s: AiSettings, docLang: string | null, doc: string, turns: ChatMessage[], onToken: (full: string) => void) =>
   chat(s, "socratic", docLang, `${defaultPrompt("socratic", docLang)}\n\nNOTE:\n${doc.slice(0, 12000)}`,
     turns.length ? turns : [{ role: "user", content: "Start the dialogue with your first question." }], onToken);
+
+/** Nieoczywiste połączenia / wskrzeszanie: bieżąca notatka + fragmenty wybranych lokalnie notatek. */
+export const notesTool = (s: AiSettings, task: "connections" | "resurface", docLang: string | null, doc: string, current: string,
+  notes: { name: string; excerpt: string; note?: string }[], onToken: (full: string) => void) =>
+  chat(s, task, docLang, defaultPrompt(task, docLang),
+    `NOTES:\n${notes.map((n) => `### [[${n.name}]]${n.note ? ` (${n.note})` : ""}\n${n.excerpt}`).join("\n\n")}\n\n` +
+    `CURRENT NOTE ("${current}"):\n${doc.slice(0, 8000)}`, onToken);

@@ -34,3 +34,17 @@ export function relatedNotes(current: string, notes: { name: string; path: strin
       return { name: n.name, path: n.path, excerpt, score };
     });
 }
+
+/**
+ * Notatki z „innych dziedzin” do szukania nieoczywistych połączeń: najmniej wspólnych słów z bieżącą notatką,
+ * ale niepuste. Bierzemy tytuł i początek, żeby zmieścić wiele notatek w jednym zapytaniu.
+ */
+export function distantNotes(current: string, notes: { name: string; path: string; text: string }[], top = 30, chars = 400) {
+  const q = new Set(words(current));
+  return notes
+    .map((n) => { const w = words(n.text); return { n, overlap: w.filter((x) => q.has(x)).length / Math.max(1, w.length), size: w.length }; })
+    .filter((x) => x.size >= 30 && x.overlap < 0.15) // ten sam temat to nie „inna dziedzina”
+    .sort((a, b) => a.overlap - b.overlap)
+    .slice(0, top)
+    .map(({ n }) => ({ name: n.name, path: n.path, excerpt: n.text.replace(/^#.*\n/, "").trim().slice(0, chars), score: 0 }));
+}

@@ -8,7 +8,7 @@ import { getVersion } from "@tauri-apps/api/app";
 
 export type Feature =
   | "app.open" | "ai.analyze" | "ai.summary" | "ai.links" | "ai.cliche" | "ai.devil" | "ai.past"
-  | "ai.claim" | "ai.assumptions" | "ai.lay" | "ai.starter" | "ai.precheck" | "ai.socratic"
+  | "ai.claim" | "ai.assumptions" | "ai.lay" | "ai.starter" | "ai.precheck" | "ai.socratic" | "ai.connections" | "ai.resurface"
   | "publish.iggy" | "publish.export" | "publish.wordpress" | "publish.ghost" | "publish.substack"
   | "sync.run" | "sync.git" | "rss.read" | "rss.save" | "history.restore" | "note.new";
 

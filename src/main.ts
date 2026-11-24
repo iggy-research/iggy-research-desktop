@@ -11,12 +11,12 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
 import { clicheField, setCliches, locate } from "./cliches";
-import { relatedNotes } from "./related";
+import { relatedNotes, distantNotes } from "./related";
 import { listSnapshots, readSnapshot, snapshot } from "./history";
 import { invoke } from "@tauri-apps/api/core";
 import { stat } from "@tauri-apps/plugin-fs";
@@ -137,8 +137,33 @@ document.addEventListener("click", () => { moreMenu.hidden = true; });
 moreMenu.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => (b.onclick = () => {
   moreMenu.hidden = true;
   if (b.dataset.tool === "socratic") runSocratic();
+  else if (b.dataset.tool === "connections" || b.dataset.tool === "resurface") runNotesTool(b.dataset.tool);
   else runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
 }));
+
+/** Nieoczywiste połączenia (notatki z innych dziedzin) i wskrzeszanie (notatki nieruszane od 60+ dni). */
+function runNotesTool(task: "connections" | "resurface") {
+  return runTask(task, "ai.working", async (cur) => {
+    if (!vault.notes.length) { cur.textContent = t("ai.needLibrary"); return null; }
+    const doc = editor.getContent();
+    const others = vault.notes.filter((n) => n.path !== filePath).map((n) => ({ name: n.name, path: n.path, text: vault.textOf(n.path) }));
+    let picked: { name: string; excerpt: string; note?: string }[];
+    if (task === "connections") {
+      picked = distantNotes(doc, others);
+    } else {
+      const cutoff = Date.now() - 60 * 24 * 3600 * 1000, old: typeof others = [], when = new Map<string, Date>();
+      for (const n of others) {
+        const m = (await stat(n.path).catch(() => null))?.mtime;
+        if (m && m.getTime() < cutoff) { old.push(n); when.set(n.path, m); }
+      }
+      picked = relatedNotes(doc, old, { top: 6, chars: 1200 }).map((r) => ({ ...r, note: when.get(r.path)!.toLocaleDateString(uiLang()) }));
+    }
+    if (!picked.length) { cur.textContent = t(task === "connections" ? "ai.connectionsNone" : "ai.resurfaceNone"); return null; }
+    const head = `<p class="hint">${escapeHtml(t("ai.pastCompared", { names: picked.map((r) => r.name).slice(0, 12).join(", ") + (picked.length > 12 ? "…" : "") }))}</p>`;
+    cur.innerHTML = head;
+    return notesTool(settings, task, docLang(), doc, currentNoteName(), picked, (partial) => { cur.innerHTML = head + renderAi(partial); });
+  });
+}
 
 /**
  * Dialog sokratejski: AI zadaje jedno pytanie naraz, autor odpowiada w panelu.
