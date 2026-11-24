@@ -2,6 +2,9 @@
 
 Minimalistyczny edytor Markdown skupiony na pisaniu, z analizą akapitów na żywo przez OpenRouter.
 
+Część ekosystemu Iggy Research — pozostałe repozytoria (serwer `iggy-research-api`, strona `iggy-research-web`,
+wdrożenie `iggy-research-deploy`, filozofia i roadmapa `iggy-research-docs`) leżą obok w tym samym katalogu.
+
 **Stos:** Tauri 2 (Rust, natywny WebView: WebKitGTK na Linuksie, WKWebView na macOS) + Vite + TypeScript + CodeMirror 6.
 Binarka ma ok. 10 MB, a nie ok. 150 MB jak w Electronie.
 
