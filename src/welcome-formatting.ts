@@ -130,7 +130,7 @@ Kliknij pole wyboru, żeby odhaczyć zadanie. Edytor sam zmieni \`[ ]\` na \`[x]
 
 ## Linki
 
-Link do strony: [repozytorium Iggy Research](https://github.com/rafalgawlik/iggy-research)
+Link do strony: [strona Iggy Research](https://iggy-research.com)
 
 Link do notatki: [[Witaj]] · z własnym tekstem: [[Drugi mózg|moja sieć notatek]] · do nagłówka: [[Skupienie#Focus]]
 
@@ -139,7 +139,7 @@ Link do notatki, której jeszcze nie ma: [[Notatka z przyszłości]] (przerywane
 Jak to zapisać:
 
 ${F}markdown
-[repozytorium Iggy Research](https://github.com/rafalgawlik/iggy-research)
+[strona Iggy Research](https://iggy-research.com)
 [[Witaj]]
 [[Drugi mózg|moja sieć notatek]]
 [[Skupienie#Focus]]

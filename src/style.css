@@ -365,3 +365,12 @@ dialog.wide { width: min(900px, 94vw); }
 .cliche-list li:hover q { text-decoration: underline; }
 .cliche-list small { display: block; color: var(--muted); }
 .ai-actions { flex-wrap: wrap; }
+
+/* Zakres synchronizacji */
+#sync-scope { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; }
+.scope-folder summary { cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.scope-folder summary label { margin: 0; display: inline-flex; }
+dialog label.scope-row { margin: 0; padding: 2px 0; }
+dialog label.scope-note { padding-left: 22px; }
+.sync-advanced { margin: 0 0 12px; font-size: 12px; }
+.sync-advanced summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }

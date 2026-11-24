@@ -22,6 +22,8 @@ export interface SyncDeps {
   notes: () => { path: string; rel: string }[];
   /** plik zmieniony przez synchronizację (do odświeżenia edytora i biblioteki) */
   changed: (paths: string[]) => Promise<void>;
+  /** Czy notatka (ścieżka względna) ma być synchronizowana — wybór użytkownika: foldery i pojedyncze notatki. */
+  included: (rel: string) => boolean;
   status: (msg: string, error?: boolean) => void;
   device: string;
 }
@@ -116,6 +118,12 @@ export class Sync {
   get e2eUnlocked() { return !!this.keys; }
 
   // ---------- Synchronizacja ----------
+  /** Po poszerzeniu zakresu: pobierz wszystko od początku (wersje, które już mamy, zostaną pominięte). */
+  async rewind() {
+    const state = await this.d.store().get<SyncState>("syncState");
+    if (state) { state.seq = 0; await this.d.store().set("syncState", state); }
+  }
+
   /** Synchronizacja co kilka minut i chwilę po zapisie (jeśli zalogowano). */
   startAuto(everyMs = 120_000) {
     clearInterval(this.timer);
@@ -154,7 +162,7 @@ export class Sync {
       if (touched.length) { await this.d.changed(touched); touched.length = 0; }
 
       // 2. Wyślij lokalne zmiany
-      const local = new Map(this.d.notes().filter((n) => !n.rel.startsWith(".")).map((n) => [n.rel, n.path]));
+      const local = new Map(this.d.notes().filter((n) => !n.rel.startsWith(".") && this.d.included(n.rel)).map((n) => [n.rel, n.path]));
       const changes: any[] = [], pending: Record<string, { hash: string; key: string }> = {};
       for (const [rel, path] of local) {
         let text: string;
@@ -167,6 +175,8 @@ export class Sync {
         changes.push({ ...(await this.wire(key, rel, text)), base_version: prev?.version ?? 0, rel });
       }
       for (const [rel, prev] of Object.entries(state.files)) {
+        // wyłączona z synchronizacji: nie wysyłamy usunięcia (plik zostaje na dysku i na serwerze bez zmian)
+        if (!this.d.included(rel)) continue;
         if (local.has(rel) || (await exists(join(root, ...rel.split("/"))))) continue; // usunięte = nie ma na dysku
         changes.push({ ...(await this.wire(prev.key, rel, "")), deleted: true, base_version: prev.version, rel });
         pending[prev.key] = { hash: "", key: prev.key };
@@ -206,7 +216,7 @@ export class Sync {
   /** Zapisuje notatkę z serwera na dysk; gdy lokalny plik też się zmienił, zachowuje go jako kopię konfliktu. */
   private async applyRemote(root: string, state: SyncState, n: any, touched: string[], conflict = false) {
     const rel: string = n.encrypted ? await decrypt(this.keys!, n.path) : n.path;
-    if (!isSafeRel(rel)) return;
+    if (!isSafeRel(rel) || !this.d.included(rel)) return; // poza wybranym zakresem — nie zapisujemy na dysku
     const content: string = n.deleted ? "" : n.encrypted && n.content ? await decrypt(this.keys!, n.content) : n.content;
     const path = join(root, ...rel.split("/"));
     const prev = state.files[rel];

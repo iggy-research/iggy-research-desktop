@@ -1,0 +1,93 @@
+name: Release
+
+# Wydanie: podbij "version" w src-tauri/tauri.conf.json i package.json, potem:
+#   git tag v0.2.0 && git push origin v0.2.0
+# Workflow buduje aplikację na macOS (Apple Silicon i Intel) i Linux, i tworzy szkic wydania z plikami.
+# Szkic publikujesz ręcznie na GitHubie (Releases → Edit → Publish).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS (Intel)
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: Linux
+            platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          APP=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$APP" != "$TAG" ]; then
+            echo "::error::Tag v$TAG nie zgadza się z wersją aplikacji $APP (src-tauri/tauri.conf.json)"; exit 1
+          fi
+
+      - name: System libraries for Tauri (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Podpis i notaryzacja macOS (opcjonalnie): ustaw sekrety repo, a aplikacja przestanie wymagać
+          # „Otwórz mimo to”. Bez nich aplikacja jest podpisana ad hoc.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Iggy Research v__VERSION__
+          releaseBody: |
+            Pobierz plik dla swojego systemu:
+            - **macOS (Apple Silicon)**: `…_aarch64.dmg`
+            - **macOS (Intel)**: `…_x64.dmg`
+            - **Linux**: `.AppImage` (uruchom), `.deb` (Ubuntu, Debian) albo `.rpm` (Fedora)
+
+            macOS: aplikacja nie jest jeszcze notaryzowana — przy pierwszym uruchomieniu kliknij ją prawym przyciskiem → „Otwórz”.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

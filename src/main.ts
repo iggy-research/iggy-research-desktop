@@ -805,6 +805,7 @@ const sync = new Sync({
   store: () => store,
   root: () => vault.root,
   notes: () => vault.notes,
+  included: (rel) => isSynced(rel),
   device: navigator.platform || "desktop",
   status: (msg, error) => { const el = $("#sync-status"); el.textContent = `☁ ${msg}`; el.classList.toggle("error", !!error); },
   changed: async (paths) => {
@@ -815,6 +816,55 @@ const sync = new Sync({
     }
   },
 });
+/**
+ * Zakres synchronizacji: lista wyłączeń — folder „Nazwa/” albo pojedyncza notatka „Nazwa/plik.md”.
+ * Wyłączone notatki zostają tylko na tym komputerze.
+ */
+let syncExcluded: string[] = [];
+const isSynced = (rel: string) => !syncExcluded.some((e) => (e.endsWith("/") ? rel.startsWith(e) : rel === e));
+
+function renderSyncScope() {
+  const box = $("#sync-scope");
+  box.innerHTML = "";
+  if (!vault.root || !vault.notes.length) { box.innerHTML = `<p class="hint">${escapeHtml(t("sync.noRoot"))}</p>`; return; }
+  const groups = new Map<string, Note[]>();
+  for (const n of vault.notes) {
+    if (n.rel.startsWith(".")) continue;
+    const top = n.rel.includes("/") ? n.rel.split("/")[0] : "";
+    groups.set(top, [...(groups.get(top) ?? []), n]);
+  }
+  const save = async (widened: boolean) => {
+    await store.set("syncExcluded", syncExcluded);
+    if (widened) await sync.rewind(); // poszerzony zakres: dociągnij to, co wcześniej pomijaliśmy
+    renderSyncScope();
+    sync.sync().catch(() => {});
+  };
+  const toggle = (entry: string, on: boolean) => {
+    syncExcluded = on ? syncExcluded.filter((e) => e !== entry) : [...syncExcluded.filter((e) => !(entry.endsWith("/") && e.startsWith(entry))), entry];
+    save(on);
+  };
+  const row = (label: string, entry: string, checked: boolean, disabled = false, cls = "") => {
+    const l = document.createElement("label");
+    l.className = `row scope-row ${cls}`;
+    l.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}/> <span>${escapeHtml(label)}</span>`;
+    l.querySelector("input")!.onchange = (e) => toggle(entry, (e.target as HTMLInputElement).checked);
+    return l;
+  };
+  for (const [top, notes] of [...groups].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, uiLang())))) {
+    const det = document.createElement("details");
+    det.className = "scope-folder";
+    const folderOn = !top || !syncExcluded.includes(`${top}/`);
+    const sum = document.createElement("summary");
+    if (top) sum.append(row(`📁 ${top}`, `${top}/`, folderOn));
+    else sum.textContent = t("sync.rootNotes");
+    const off = notes.filter((n) => !isSynced(n.rel)).length;
+    sum.insertAdjacentHTML("beforeend", `<small class="hint"> ${notes.length - off}/${notes.length}</small>`);
+    det.append(sum);
+    for (const n of notes) det.append(row(n.rel.slice(top ? top.length + 1 : 0).replace(/\.(md|markdown)$/i, ""), n.rel, isSynced(n.rel), !folderOn, "scope-note"));
+    box.append(det);
+  }
+}
+
 /** Ustawienia, które jadą między urządzeniami (klucz API zostaje lokalnie). */
 const syncedSettings = () => ({
   ai: { models: settings.models, prompt: settings.prompt, debounceMs: settings.debounceMs, autoAnalyze: settings.autoAnalyze },
@@ -838,6 +888,8 @@ function openSync() {
   const show = async () => {
     const acc = sync.account;
     $("#sync-out").hidden = !!acc; $("#sync-in").hidden = !acc;
+    $("#sync-scope-wrap").hidden = !acc;
+    if (acc) renderSyncScope();
     msg.textContent = "";
     if (!acc) return;
     $("#sync-who").textContent = t("sync.who", { user: acc.username, server: acc.server });
@@ -856,12 +908,15 @@ function openSync() {
     try { await fn(); } catch (e: any) { msg.textContent = String(e?.message ?? e); }
     finally { dlg.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
   };
-  (f.server as HTMLInputElement).value = sync.account?.server ?? ((f.server as HTMLInputElement).value || DEFAULT_SERVER);
+  // serwer: na stałe iggy-research.com; własny tylko w zwiniętej opcji „zaawansowane” (puste = domyślny)
+  const customServer = sync.account && sync.account.server !== DEFAULT_SERVER ? sync.account.server : "";
+  (f.server as HTMLInputElement).value = customServer || (f.server as HTMLInputElement).value;
+  (dlg.querySelector(".sync-advanced") as HTMLDetailsElement).open = !!(f.server as HTMLInputElement).value;
   (f.gitRemote as HTMLInputElement).value = gitRemote;
   const login = (register: boolean) => run(async () => {
-    const server = f.server.value.trim(), email = f.email.value.trim(), password = f.password.value;
+    const server = f.server.value.trim() || DEFAULT_SERVER, email = f.email.value.trim(), password = f.password.value;
     if (register && $("#sync-username-row").hidden) { $("#sync-username-row").hidden = false; f.username.focus(); return; }
-    if (!server || !email || !password) { msg.textContent = t("sync.fillFields"); return; }
+    if (!email || !password) { msg.textContent = t("sync.fillFields"); return; }
     if (register && !f.username.value.trim()) { msg.textContent = t("sync.needUsername"); return; }
     await sync.login(server, email, password, register, f.username.value.trim());
     f.password.value = "";
@@ -909,7 +964,7 @@ function openSync() {
   dlg.showModal();
 }
 let gitRemote = "";
-const DEFAULT_SERVER = "https://iggy-research.com"; // własny serwer można wpisać zamiast niego
+const DEFAULT_SERVER = "https://iggy-research.com"; // serwer Iggy; własny (self-hosting) w opcjach zaawansowanych
 
 // ---------- Publikacja ----------
 /** Rozwiązywanie osadzeń względem dowolnej notatki (jak podgląd, ale nie tylko dla otwartego pliku). */
@@ -959,26 +1014,45 @@ async function openPublish() {
   let existing: pub.IggyPost | null = null;
   const btn = $("#pub-iggy"), off = $("#pub-iggy-off");
   $("#pub-tags").textContent = meta.tags.length ? t("pub.tags", { tags: meta.tags.map((x) => "#" + x).join(" ") }) : "";
+  // Blog = folder główny notatki w bibliotece (Eseje/2026/Plik.md → blog „Eseje”); notatka bez folderu wybiera blog sama
+  const topFolder = target.inVault && target.rel.includes("/") ? target.rel.split("/")[0] : "";
+  const blogInput = f.pubBlog as HTMLInputElement, urlEl = $("#pub-url");
+  const showUrl = () => {
+    const blog = pub.slugify(blogInput.value || ""), post = pub.slugify((f.pubSlug as HTMLInputElement).value || name);
+    urlEl.textContent = acc && blogInput.value.trim() ? `${acc.server.replace(/^https?:\/\//, "")}/@${acc.username}/${blog}/${post}` : t("pub.needBlog");
+  };
+  blogInput.oninput = showUrl;
+  (f.pubSlug as HTMLInputElement).oninput = showUrl;
   const fill = () => {
+    blogInput.value = blogInput.value || topFolder; // przy istniejącym wpisie nadpisze to folder jego bloga (lista niżej)
     (f.pubTitle as HTMLInputElement).value = existing?.title ?? meta.title;
-    (f.pubSlug as HTMLInputElement).value = existing?.slug ?? pub.slugify(meta.title);
+    (f.pubSlug as HTMLInputElement).value = existing?.slug ?? pub.slugify(name);
     (f.pubKind as HTMLSelectElement).value = existing?.kind ?? "post";
     (f.pubVisibility as HTMLSelectElement).value = existing && existing.visibility !== "private" ? existing.visibility : "public";
     btn.textContent = t(existing ? "pub.update" : "pub.publish");
     off.hidden = !existing || existing.visibility === "private";
+    showUrl();
   };
   fill();
   if (acc) {
     existing = await pub.findIggyPost(acc, target.rel).catch(() => null);
+    // podpowiedzi: istniejące blogi autora
+    pub.listIggyBlogs(acc).then((blogs) => {
+      $("#pub-blogs").innerHTML = blogs.map((b) => `<option value="${escapeHtml(b.folder || b.title)}">${escapeHtml(b.base_url)}</option>`).join("");
+      const mine = existing && blogs.find((b) => b.id === existing!.blog);
+      if (mine) { blogInput.value = mine.folder || mine.title; showUrl(); }
+    }).catch(() => {});
     fill();
     if (existing && existing.visibility !== "private") msg.textContent = linkMsg("pub.published", existing.url);
     btn.onclick = () => run(async () => {
-      const title = f.pubTitle.value.trim(), slug = pub.slugify(f.pubSlug.value || title);
+      const title = f.pubTitle.value.trim(), slug = pub.slugify(f.pubSlug.value || name);
+      const blogFolder = blogInput.value.trim();
+      if (!blogFolder) return t("pub.needBlog");
       const kind = f.pubKind.value as "post" | "garden";
       existing = await pub.publishIggy(acc, {
         // notatka w ogrodzie ma tytuł = nazwa pliku, żeby [[linki]] innych notatek do niej trafiały
         title: kind === "garden" && !f.pubTitle.value.trim() ? name : title || name, slug, kind,
-        visibility: f.pubVisibility.value, tags: meta.tags, md: editor.getContent(), source: target.rel, resolve,
+        visibility: f.pubVisibility.value, tags: meta.tags, blogFolder, md: editor.getContent(), source: target.rel, resolve,
       }, existing);
       fill();
       if (existing.visibility === "private") return t("pub.unpublished");
@@ -1349,6 +1423,7 @@ function applyLanguage() {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   await sync.init();
   gitRemote = (await store.get<string>("gitRemote")) ?? "";
+  syncExcluded = (await store.get<string[]>("syncExcluded")) ?? [];
   feeds = (await store.get<rss.Feed[]>("rssFeeds")) ?? [];
   readItems = new Set((await store.get<string[]>("rssRead")) ?? []);
   publishCfg = { ...publishCfg, ...((await store.get<typeof publishCfg>("publishCfg")) ?? {}) };

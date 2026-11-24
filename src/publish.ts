@@ -91,9 +91,12 @@ const blobOf = (bytes: Uint8Array, name: string) => new Blob([bytes as BlobPart]
 
 // ---------- Blog Iggy ----------
 
-export interface IggyPost { id: number; slug: string; title: string; visibility: "private" | "unlisted" | "public"; kind: "post" | "garden"; url: string }
+export interface IggyPost { id: number; slug: string; title: string; visibility: "private" | "unlisted" | "public"; kind: "post" | "garden"; url: string; blog: number; blog_slug: string; blog_title: string }
+export interface IggyBlog { id: number; slug: string; folder: string; title: string; base_url: string }
 export interface IggyPublishInput {
   title: string; slug: string; kind: "post" | "garden"; visibility: IggyPost["visibility"]; tags: string[];
+  /** Folder główny biblioteki = blog (iggy-research.com/@autor/<folder>/<wpis>); serwer tworzy blog przy pierwszej publikacji. */
+  blogFolder: string;
   md: string; source: string; resolve: (ref: string) => string | null;
 }
 
@@ -119,12 +122,14 @@ export async function publishIggy(acc: Account, input: IggyPublishInput, existin
   });
   const body = JSON.stringify({
     title: input.title, slug: input.slug, kind: input.kind, visibility: input.visibility, tags: input.tags,
-    content_md: rewriteEmbeds(input.md, urls), source: input.source,
+    blog_folder: input.blogFolder, content_md: rewriteEmbeds(input.md, urls), source: input.source,
   });
   return existing
     ? iggy<IggyPost>(acc, `posts/${existing.id}`, { method: "PATCH", body })
     : iggy<IggyPost>(acc, "posts", { method: "POST", body });
 }
+
+export const listIggyBlogs = (acc: Account) => iggy<IggyBlog[]>(acc, "blogs");
 
 export const unpublishIggy = (acc: Account, post: IggyPost) =>
   iggy<IggyPost>(acc, `posts/${post.id}`, { method: "PATCH", body: JSON.stringify({ visibility: "private" }) });

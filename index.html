@@ -142,9 +142,6 @@
         <h2 data-i18n="sync.title"></h2>
         <div id="sync-out">
           <p class="hint" data-i18n="sync.intro"></p>
-          <label><span data-i18n="sync.server"></span>
-            <input type="text" name="server" placeholder="https://iggy-research.com" autocomplete="off" />
-          </label>
           <label><span data-i18n="sync.email"></span>
             <input type="text" name="email" autocomplete="username" />
           </label>
@@ -154,6 +151,13 @@
           <label id="sync-username-row" hidden><span data-i18n="sync.username"></span>
             <input type="text" name="username" placeholder="np. ala" autocomplete="off" />
           </label>
+          <details class="sync-advanced">
+            <summary data-i18n="sync.customServer"></summary>
+            <label><span data-i18n="sync.server"></span>
+              <input type="text" name="server" placeholder="https://iggy-research.com" autocomplete="off" />
+            </label>
+            <p class="hint" data-i18n="sync.customServerHint"></p>
+          </details>
           <div class="btn-row">
             <button type="button" id="sync-login" class="primary" data-i18n="sync.login"></button>
             <button type="button" id="sync-register" data-i18n="sync.register"></button>
@@ -172,6 +176,11 @@
             <button type="button" id="sync-unlock"></button>
             <button type="button" id="sync-e2e-off" data-i18n="sync.e2eOff"></button>
           </div>
+        </div>
+        <div id="sync-scope-wrap" hidden>
+          <h3 data-i18n="sync.scope"></h3>
+          <p class="hint" data-i18n="sync.scopeHint"></p>
+          <div id="sync-scope"></div>
         </div>
         <p id="sync-msg" class="hint"></p>
 
@@ -213,6 +222,11 @@
         <section data-pub-pane="iggy">
           <p class="hint" id="pub-iggy-login" data-i18n="pub.needLogin" hidden></p>
           <div id="pub-iggy-form">
+            <label><span data-i18n="pub.blog"></span>
+              <input type="text" name="pubBlog" list="pub-blogs" autocomplete="off" />
+              <datalist id="pub-blogs"></datalist>
+            </label>
+            <p class="hint" id="pub-url"></p>
             <label><span data-i18n="pub.postTitle"></span><input type="text" name="pubTitle" /></label>
             <label><span data-i18n="pub.slug"></span><input type="text" name="pubSlug" /></label>
             <div class="local-row">
