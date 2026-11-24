@@ -393,3 +393,8 @@ dialog input.code-input { font-family: var(--font-body); font-size: 20px; letter
 .dialog-turn p { margin: 0; }
 .dialog-input { width: 100%; font: inherit; font-size: 13px; padding: 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
 .dialog-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+/* Notatka głosowa */
+.voice-rec { display: flex; align-items: center; gap: 8px; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #d0403a; animation: rec 1s infinite alternate; }
+@keyframes rec { to { opacity: .3; } }

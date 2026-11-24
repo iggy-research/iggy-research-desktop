@@ -4,8 +4,8 @@ import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
 export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past"
-  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic" | "connections" | "resurface" | "conversation";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic", "connections", "resurface", "conversation"];
+  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic" | "connections" | "resurface" | "conversation" | "voice";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic", "connections", "resurface", "conversation", "voice"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -91,6 +91,10 @@ Używaj WYŁĄCZNIE nazw z listy, w zapisie [[Nazwa]]. Pisz w języku notatki, w
 3. **Niezgoda** — najmocniejsze zastrzeżenia, uczciwie streszczone.
 4. **Na następną notatkę** — 2–3 tematy, które warto rozwinąć.
 Nie oceniaj czytelników i nie broń autora. Cytuj krótko. Pisz w języku tekstu, w Markdown.`,
+    voice: `Dostajesz nagranie, w którym autor mówi na głos swoje myśli. Spisz je jako luźne punkty w Markdown:
+w kolejności, jego słowami, krótko. Nie dopisuj nic od siebie, nie zamieniaj w prozę, bez wstępu i podsumowania.
+Pytania autora zapisz jako pytania; to, czego jest niepewny, oznacz „(?)”. Jeśli są wątki do rozwinięcia, dodaj na końcu sekcję **Otwarte wątki**.
+Pisz w języku nagrania.`,
     precheck: `Kontrola przed publikacją. Nie oceniaj stylu i nie przepisuj tekstu. Wypisz w Markdown, w języku tekstu:
 **Do sprawdzenia** — fakty, liczby, daty, nazwiska i cytaty, które warto zweryfikować (cytuj fragment).
 **Niespójności** — miejsca, gdzie tekst przeczy sam sobie albo zmienia nazewnictwo.
@@ -154,6 +158,10 @@ Use ONLY names from the list, written as [[Name]]. Write in the note's language,
 3. **Disagreement** — the strongest objections, fairly summarized.
 4. **For the next note** — 2–3 topics worth developing.
 Don't judge readers or defend the author. Quote briefly. Write in the text's language, in Markdown.`,
+    voice: `You get a recording of the author thinking out loud. Write it down as loose bullet points in Markdown:
+in order, in their words, briefly. Add nothing of your own, don't turn it into prose, no intro and no summary.
+Keep the author's questions as questions; mark what they are unsure about with “(?)”. If there are threads to develop, add an **Open threads** section at the end.
+Write in the language of the recording.`,
     precheck: `Pre-publication check. Do not judge style or rewrite the text. List in Markdown, in the text's language:
 **To verify** — facts, numbers, dates, names and quotes worth checking (quote the fragment).
 **Inconsistencies** — places where the text contradicts itself or changes naming.
@@ -191,7 +199,9 @@ export const analyzePrompt = (s: AiSettings, docLang: string | null) =>
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
   models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "",
-    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "", connections: "", resurface: "", conversation: "" },
+    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "", connections: "", resurface: "", conversation: "",
+    voice: "google/gemini-4-hydrogen", // model z wejściem audio (Claude go nie ma, więc nie dziedziczymy analizy)
+  },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -228,7 +238,7 @@ export const setOnModelUsed = (f: (key: string) => void) => (onModelUsed = f);
 const controllers: Partial<Record<Task, AbortController>> = {};
 
 /** Strumieniuje odpowiedź modelu przypisanego do zadania. Poprzednie żądanie tego samego zadania jest przerywane. */
-export interface ChatMessage { role: "user" | "assistant"; content: string }
+export interface ChatMessage { role: "user" | "assistant"; content: string | unknown[] }
 
 async function chat(s: AiSettings, task: Task, docLang: string | null, system: string, user: string | ChatMessage[], onToken: (full: string) => void): Promise<string> {
   const info = docLang ? DOC_LANGS[docLang] : null;
@@ -341,3 +351,12 @@ export const notesTool = (s: AiSettings, task: "connections" | "resurface", docL
 export const conversationTool = (s: AiSettings, docLang: string | null, doc: string, replies: { name: string; text: string }[], onToken: (full: string) => void) =>
   chat(s, "conversation", docLang, defaultPrompt("conversation", docLang),
     `REPLIES:\n${replies.map((r, i) => `[${i + 1}] ${r.name || "anonymous"}: ${r.text}`).join("\n\n").slice(0, 20000)}\n\nTEXT:\n${doc.slice(0, 8000)}`, onToken);
+
+/** Notatka głosowa: nagranie (WAV base64) → luźne punkty słowami autora. Wymaga modelu z wejściem audio. */
+export const voiceToBullets = (s: AiSettings, docLang: string | null, wavBase64: string, onToken: (full: string) => void) =>
+  chat(s, "voice", docLang, defaultPrompt("voice", docLang), [{
+    role: "user", content: [
+      { type: "text", text: "Here is the recording." },
+      { type: "input_audio", input_audio: { data: wavBase64, format: "wav" } },
+    ],
+  }], onToken);

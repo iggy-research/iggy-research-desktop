@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, conversationTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt, analyzePrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, conversationTool, voiceToBullets, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt, analyzePrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
@@ -25,6 +25,7 @@ import * as rss from "./rss";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { Telemetry } from "./telemetry";
+import { Recorder } from "./audio";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -138,9 +139,48 @@ moreMenu.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => (b.on
   moreMenu.hidden = true;
   if (b.dataset.tool === "socratic") runSocratic();
   else if (b.dataset.tool === "conversation") runConversation();
+  else if (b.dataset.tool === "voice") runVoice();
   else if (b.dataset.tool === "connections" || b.dataset.tool === "resurface") runNotesTool(b.dataset.tool);
   else runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
 }));
+
+/** Notatka głosowa: nagrywasz myśli, AI spisuje je jako luźne punkty (bez prozy); wstawiasz do notatki. */
+function runVoice() {
+  return runTask("voice", "ai.working", async (cur) => {
+    const rec = new Recorder();
+    try { await rec.start(); }
+    catch (e: any) { cur.textContent = t("ai.voiceMic", { err: e?.message ?? e }); return null; }
+    cur.innerHTML = `<p class="voice-rec"><span class="rec-dot"></span> ${escapeHtml(t("ai.voiceRecording"))} <span class="rec-time">0:00</span></p>
+      <div class="dialog-actions"><button type="button" class="primary voice-stop">${escapeHtml(t("ai.voiceStop"))}</button>
+      <button type="button" class="voice-cancel">${escapeHtml(t("set.cancel"))}</button></div>`;
+    const timeEl = cur.querySelector<HTMLElement>(".rec-time")!;
+    const tick = window.setInterval(() => {
+      const s = Math.floor((Date.now() - rec.started) / 1000);
+      timeEl.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      if (s >= 600) cur.querySelector<HTMLButtonElement>(".voice-stop")?.click(); // maks. 10 minut
+    }, 500);
+    const action = await new Promise<"stop" | "cancel">((ok) => {
+      cur.querySelector<HTMLButtonElement>(".voice-stop")!.onclick = () => ok("stop");
+      cur.querySelector<HTMLButtonElement>(".voice-cancel")!.onclick = () => ok("cancel");
+    });
+    clearInterval(tick);
+    if (action === "cancel") { rec.cancel(); cur.textContent = ""; return null; }
+    cur.textContent = t("ai.voiceProcessing");
+    const wav = await rec.stop();
+    const result = await voiceToBullets(settings, docLang(), wav, (partial) => { cur.innerHTML = renderAi(partial); });
+    const insert = document.createElement("button");
+    insert.type = "button"; insert.textContent = t("ai.voiceInsert");
+    insert.onclick = () => {
+      const pos = editor.view.state.selection.main.head;
+      const text = `\n${result.trim()}\n`;
+      editor.view.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } });
+      editor.view.focus();
+      insert.remove();
+    };
+    cur.append(insert);
+    return result;
+  }, true);
+}
 
 /** Rozmowa: odpowiedzi czytelników na opublikowany wpis z tej notatki → wątki i pytania; zapis jako notatka. */
 function runConversation() {
@@ -240,7 +280,7 @@ function runSocratic() {
       if (!turns.length) return;
       if (!vault.root) { await pickRoot(); if (!vault.root) return; }
       const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-");
-      const body = turns.map((m) => `**${m.role === "assistant" ? t("ai.socraticQ") : t("ai.socraticA")}:** ${m.content.trim()}`).join("\n\n");
+      const body = turns.map((m) => `**${m.role === "assistant" ? t("ai.socraticQ") : t("ai.socraticA")}:** ${String(m.content).trim()}`).join("\n\n");
       await leaveCurrent();
       const note = await vault.create(`${t("ai.socraticFolder")}/${t("task.socratic")} — ${sourceName} ${stamp}`);
       await writeTextFile(note.path, `# ${t("task.socratic")}: ${sourceName}\n\n${t("ai.socraticFrom")} [[${sourceName}]]\n\n${body}\n`);
