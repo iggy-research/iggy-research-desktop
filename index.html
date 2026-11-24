@@ -18,6 +18,8 @@
         <button data-cmd="typewriter" data-i18n-title="tb.typewriter">Typewriter</button>
         <button data-cmd="preview" data-i18n-title="tb.preview" data-i18n="tb.previewLabel"></button>
         <button data-cmd="ai" data-i18n-title="tb.ai">AI</button>
+        <button data-cmd="history" data-i18n-title="tb.history">⟲</button>
+        <button data-cmd="sync" data-i18n-title="tb.sync">☁</button>
         <button data-cmd="theme" data-i18n-title="tb.theme">◐</button>
         <button data-cmd="help" data-i18n-title="tb.help">?</button>
         <button data-cmd="settings" data-i18n-title="tb.settings">⚙</button>
@@ -59,6 +61,7 @@
       <footer id="statusbar">
         <span id="wordmark">Iggy <em>Research</em></span>
         <div class="spacer"></div>
+        <span id="sync-status"></span>
         <span id="stats"></span>
       </footer>
     </div>
@@ -126,6 +129,69 @@
         <menu>
           <button value="cancel" data-i18n="set.cancel"></button>
           <button value="save" class="primary" data-i18n="set.save"></button>
+        </menu>
+      </form>
+    </dialog>
+    <dialog id="sync-dialog">
+      <form method="dialog">
+        <h2 data-i18n="sync.title"></h2>
+        <div id="sync-out">
+          <p class="hint" data-i18n="sync.intro"></p>
+          <label><span data-i18n="sync.server"></span>
+            <input type="text" name="server" placeholder="https://iggy.example.com" autocomplete="off" />
+          </label>
+          <label><span data-i18n="sync.email"></span>
+            <input type="text" name="email" autocomplete="username" />
+          </label>
+          <label><span data-i18n="sync.password"></span>
+            <input type="password" name="password" autocomplete="current-password" />
+          </label>
+          <label id="sync-username-row" hidden><span data-i18n="sync.username"></span>
+            <input type="text" name="username" placeholder="np. ala" autocomplete="off" />
+          </label>
+          <div class="btn-row">
+            <button type="button" id="sync-login" class="primary" data-i18n="sync.login"></button>
+            <button type="button" id="sync-register" data-i18n="sync.register"></button>
+          </div>
+        </div>
+        <div id="sync-in" hidden>
+          <p id="sync-who"></p>
+          <div class="btn-row">
+            <button type="button" id="sync-now" class="primary" data-i18n="sync.now"></button>
+            <button type="button" id="sync-logout" data-i18n="sync.logout"></button>
+          </div>
+          <h3 data-i18n="sync.e2e"></h3>
+          <p class="hint" id="sync-e2e-state"></p>
+          <div class="btn-row">
+            <input type="password" name="passphrase" data-i18n-placeholder="sync.passphrase" autocomplete="off" />
+            <button type="button" id="sync-unlock"></button>
+            <button type="button" id="sync-e2e-off" data-i18n="sync.e2eOff"></button>
+          </div>
+        </div>
+        <p id="sync-msg" class="hint"></p>
+
+        <h3 data-i18n="sync.git"></h3>
+        <p class="hint" data-i18n="sync.gitHint"></p>
+        <div class="btn-row">
+          <input type="text" name="gitRemote" placeholder="git@github.com:ja/notatki.git" autocomplete="off" />
+          <button type="button" id="git-sync" data-i18n="sync.gitNow"></button>
+        </div>
+        <p id="git-msg" class="hint"></p>
+        <p class="hint" data-i18n="sync.cloudHint"></p>
+        <menu><button value="close" data-i18n="common.close"></button></menu>
+      </form>
+    </dialog>
+
+    <dialog id="history-dialog" class="wide">
+      <form method="dialog">
+        <h2><span data-i18n="hist.title"></span> <small id="hist-file" class="hint"></small></h2>
+        <div class="hist-body">
+          <ul id="hist-list"></ul>
+          <div id="hist-preview" class="hint" data-i18n="hist.pick"></div>
+        </div>
+        <menu>
+          <button type="button" id="hist-restore" class="primary" data-i18n="hist.restore" disabled></button>
+          <button value="close" data-i18n="common.close"></button>
         </menu>
       </form>
     </dialog>

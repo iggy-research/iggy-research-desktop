@@ -320,3 +320,18 @@ dialog .mp-custom input { flex: 1; margin-top: 0; }
 .local-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
 .local-row label { flex: 0 0 110px; margin: 0; }
 dialog .local-row input[type=text] { flex: 1; margin-top: 0; }
+
+/* Synchronizacja i historia */
+#sync-status { color: var(--muted); font-size: 11px; margin-right: 14px; }
+#sync-status.error { color: #d0603a; }
+.btn-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+dialog .btn-row input { flex: 1; margin-top: 0; }
+dialog.wide { width: min(900px, 94vw); }
+.hist-body { display: flex; gap: 12px; height: 60vh; margin-bottom: 12px; }
+#hist-list { list-style: none; margin: 0; padding: 0; flex: 0 0 230px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+#hist-list li { padding: 6px 10px; cursor: pointer; }
+#hist-list li + li { border-top: 1px solid var(--border); }
+#hist-list li:hover { background: var(--panel); }
+#hist-list li.selected { box-shadow: inset 3px 0 0 var(--accent); background: var(--panel); }
+#hist-list li small { display: block; color: var(--muted); font-size: 11px; }
+#hist-preview { flex: 1; overflow: auto; white-space: pre-wrap; font-family: var(--font-body); font-size: 13px; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; }

@@ -14,6 +14,9 @@ import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
 import { analyzeParagraph, summarizeNote, suggestLinks, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
+import { Sync } from "./sync";
+import { listSnapshots, readSnapshot, snapshot } from "./history";
+import { invoke } from "@tauri-apps/api/core";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -313,6 +316,9 @@ async function saveFile(as = false) {
   await writeTextFile(filePath, text);
   setDirty(false);
   store.set("lastFile", filePath);
+  const h = historyTarget(filePath);
+  snapshot(h.base, h.rel, text).catch((e) => console.warn("historia:", e));
+  sync.afterSave();
   if (vault.notes.some((n) => n.path === filePath)) {
     vault.updateContent(filePath, text);
   } else if (vault.root && filePath.startsWith(vault.root)) {
@@ -632,6 +638,8 @@ const cmds: Record<string, () => void> = {
   theme: () => { ui.dark = !ui.dark; apply(); },
   settings: openSettings,
   help: () => { openWelcome(); },
+  history: () => { openHistory(); },
+  sync: () => { openSync(); },
 };
 document.querySelectorAll<HTMLButtonElement>("[data-cmd]").forEach((b) => (b.onclick = () => cmds[b.dataset.cmd!]()));
 
@@ -704,6 +712,173 @@ const picker = createModelPicker($("#model-picker"), {
       { ollama: f.localOllama.checked, lmstudio: f.localLmstudio.checked }, true);
   },
 });
+
+// ---------- Synchronizacja ----------
+const sync = new Sync({
+  store: () => store,
+  root: () => vault.root,
+  notes: () => vault.notes,
+  device: navigator.platform || "desktop",
+  status: (msg, error) => { const el = $("#sync-status"); el.textContent = `☁ ${msg}`; el.classList.toggle("error", !!error); },
+  changed: async (paths) => {
+    await refreshVault();
+    // otwarty plik zmienił się na innym urządzeniu: wczytaj go, o ile nie ma tu niezapisanych zmian
+    if (filePath && paths.includes(filePath) && !dirty) {
+      try { editor.setContent(await readTextFile(filePath)); setDirty(false); updateStats(); } catch { /* usunięty */ }
+    }
+  },
+});
+/** Ustawienia, które jadą między urządzeniami (klucz API zostaje lokalnie). */
+const syncedSettings = () => ({
+  ai: { models: settings.models, prompt: settings.prompt, debounceMs: settings.debounceMs, autoAnalyze: settings.autoAnalyze },
+  appearance, language: langPrefs, autosave, modelFavorites: [...modelFavorites],
+});
+async function applySyncedSettings(r: Record<string, any>) {
+  if (!r || !r.ai) return;
+  settings = migrateSettings({ ...settings, ...r.ai, apiKey: settings.apiKey, local: settings.local, localUrls: settings.localUrls });
+  if (r.appearance) { appearance = { ...DEFAULT_APPEARANCE, ...r.appearance }; applyAppearance(appearance); store.set("appearance", appearance); }
+  if (r.language) { langPrefs = { ...langPrefs, ...r.language }; store.set("language", langPrefs); applyLanguage(); }
+  if (typeof r.autosave === "boolean") { autosave = r.autosave; store.set("autosave", autosave); }
+  for (const k of r.modelFavorites ?? []) modelFavorites.add(k);
+  store.set("modelFavorites", [...modelFavorites]);
+  await store.set("settings", settings);
+}
+
+function openSync() {
+  const dlg = $("#sync-dialog") as HTMLDialogElement;
+  const f = dlg.querySelector("form")!;
+  const msg = $("#sync-msg"), gitMsg = $("#git-msg");
+  const show = async () => {
+    const acc = sync.account;
+    $("#sync-out").hidden = !!acc; $("#sync-in").hidden = !acc;
+    msg.textContent = "";
+    if (!acc) return;
+    $("#sync-who").textContent = t("sync.who", { user: acc.username, server: acc.server });
+    const unlockBtn = $("#sync-unlock"), offBtn = $("#sync-e2e-off"), state = $("#sync-e2e-state");
+    try {
+      const st = await sync.serverState();
+      state.textContent = t(!st.e2e ? "sync.e2eOffState" : sync.e2eUnlocked ? "sync.e2eOnState" : "sync.e2eLocked");
+      unlockBtn.textContent = t(st.e2e ? "sync.unlock" : "sync.enable");
+      unlockBtn.hidden = !!st.e2e && sync.e2eUnlocked;
+      (f.passphrase as HTMLInputElement).hidden = unlockBtn.hidden;
+      offBtn.hidden = !st.e2e;
+    } catch (e: any) { msg.textContent = String(e?.message ?? e); }
+  };
+  const run = async (fn: () => Promise<unknown>) => {
+    dlg.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    try { await fn(); } catch (e: any) { msg.textContent = String(e?.message ?? e); }
+    finally { dlg.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
+  };
+  (f.server as HTMLInputElement).value = sync.account?.server ?? ((f.server as HTMLInputElement).value || "");
+  (f.gitRemote as HTMLInputElement).value = gitRemote;
+  const login = (register: boolean) => run(async () => {
+    const server = f.server.value.trim(), email = f.email.value.trim(), password = f.password.value;
+    if (register && $("#sync-username-row").hidden) { $("#sync-username-row").hidden = false; f.username.focus(); return; }
+    if (!server || !email || !password) { msg.textContent = t("sync.fillFields"); return; }
+    if (register && !f.username.value.trim()) { msg.textContent = t("sync.needUsername"); return; }
+    await sync.login(server, email, password, register, f.username.value.trim());
+    f.password.value = "";
+    const remote = await sync.pullSettings().catch(() => null);
+    if (remote && Object.keys(remote).length) await applySyncedSettings(remote);
+    else await sync.pushSettings(syncedSettings());
+    sync.startAuto();
+    await show();
+    await sync.sync().catch(() => {});
+  });
+  $("#sync-login").onclick = () => login(false);
+  $("#sync-register").onclick = () => login(true);
+  $("#sync-now").onclick = () => run(() => sync.sync());
+  $("#sync-logout").onclick = () => run(async () => { await sync.logout(); $("#sync-status").textContent = ""; await show(); });
+  $("#sync-unlock").onclick = () => run(async () => {
+    const pass = (f.passphrase as HTMLInputElement).value;
+    if (pass.length < 8) { msg.textContent = t("sync.passphrase") + ": min. 8"; return; }
+    const st = await sync.serverState();
+    if (!st.e2e && !(await ask(t("sync.e2eOnConfirm"), { title: "Iggy Research", kind: "warning" }))) return;
+    await sync.unlock(pass);
+    (f.passphrase as HTMLInputElement).value = "";
+    await show();
+    await sync.sync();
+  });
+  $("#sync-e2e-off").onclick = () => run(async () => {
+    if (!(await ask(t("sync.e2eOffConfirm"), { title: "Iggy Research", kind: "warning" }))) return;
+    await sync.disableE2E();
+    await show();
+    await sync.sync();
+  });
+  $("#git-sync").onclick = () => run(async () => {
+    if (!vault.root) { gitMsg.textContent = t("sync.noRoot"); return; }
+    gitRemote = (f.gitRemote as HTMLInputElement).value.trim();
+    store.set("gitRemote", gitRemote);
+    if (dirty && filePath) await saveFile();
+    gitMsg.textContent = t("sync.gitRunning");
+    try {
+      gitMsg.textContent = await invoke<string>("git_sync", {
+        root: vault.root, remote: gitRemote || null, message: `Iggy: ${new Date().toLocaleString()}`,
+      });
+      await refreshVault();
+    } catch (e: any) { gitMsg.textContent = String(e); }
+  });
+  show();
+  dlg.showModal();
+}
+let gitRemote = "";
+
+// ---------- Historia wersji ----------
+/** Gdzie trzymać historię pliku: w bibliotece, jeśli do niej należy, inaczej obok pliku. */
+function historyTarget(path: string) {
+  const rel = vault.root && path.startsWith(vault.root) ? path.slice(vault.root.length).replace(/^[\\/]+/, "").replace(/\\/g, "/") : null;
+  return rel ? { base: vault.root!, rel, inVault: true } : { base: dirOf(path), rel: fileName(path), inVault: false };
+}
+
+async function openHistory() {
+  const dlg = $("#history-dialog") as HTMLDialogElement;
+  const list = $("#hist-list"), preview = $("#hist-preview"), restore = $("#hist-restore") as HTMLButtonElement;
+  list.innerHTML = ""; preview.textContent = t("hist.pick"); restore.disabled = true;
+  dlg.showModal();
+  if (!filePath) { preview.textContent = t("hist.unsaved"); $("#hist-file").textContent = ""; return; }
+  const target = historyTarget(filePath);
+  $("#hist-file").textContent = target.rel;
+  type Item = { label: string; sub: string; date: Date; load: () => Promise<string> };
+  const items: Item[] = [];
+  for (const snap of await listSnapshots(target.base, target.rel).catch(() => [])) {
+    items.push({ label: snap.date.toLocaleString(), sub: t("hist.local"), date: snap.date, load: () => readSnapshot(snap) });
+  }
+  if (sync.account && target.inVault) {
+    try {
+      for (const v of await sync.versions(target.rel)) {
+        if (v.current) continue;
+        items.push({
+          label: new Date(v.created_at).toLocaleString(),
+          sub: t("hist.server", { v: v.version, device: v.device ? ` · ${v.device}` : "" }) + (v.deleted ? ` ${t("hist.deleted")}` : ""),
+          date: new Date(v.created_at), load: async () => v.content,
+        });
+      }
+    } catch { /* offline albo notatki nie ma jeszcze na serwerze */ }
+  }
+  items.sort((a, b) => b.date.getTime() - a.date.getTime());
+  if (!items.length) { preview.textContent = t("hist.empty"); return; }
+  let chosen: string | null = null;
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.innerHTML = `${escapeHtml(it.label)}<small>${escapeHtml(it.sub)}</small>`;
+    li.onclick = async () => {
+      list.querySelectorAll("li").forEach((x) => x.classList.toggle("selected", x === li));
+      chosen = await it.load();
+      preview.textContent = chosen;
+      restore.disabled = false;
+    };
+    list.append(li);
+  }
+  restore.onclick = async () => {
+    if (chosen === null || !filePath) return;
+    await snapshot(target.base, target.rel, editor.getContent(), true); // bieżąca treść też trafia do historii
+    editor.setContent(chosen);
+    setDirty(true);
+    await saveFile();
+    updateStats();
+    dlg.close();
+  };
+}
 
 // ---------- Settings ----------
 function openSettings() {
@@ -820,6 +995,7 @@ function openSettings() {
     if (uiChanged) applyLanguage();
     await store.set("settings", settings);
     await store.save();
+    sync.pushSettings(syncedSettings());
   };
   dlg.showModal();
 }
@@ -841,6 +1017,8 @@ function applyLanguage() {
 // ---------- Init ----------
 (async () => {
   store = await load("settings.json", { autoSave: true, defaults: {} });
+  await sync.init();
+  gitRemote = (await store.get<string>("gitRemote")) ?? "";
   settings = migrateSettings(await store.get("settings"));
   langPrefs = { ...langPrefs, ...((await store.get<typeof langPrefs>("language")) ?? {}) };
   applyLanguage();
@@ -866,6 +1044,7 @@ function applyLanguage() {
   editor.view.dispatch({ effects: refreshLinks.of(null) });
   updateStats();
   editor.view.focus();
+  if (sync.account) { sync.startAuto(); sync.sync().catch(() => {}); }
   const missing = missingConfig(settings, "analyze");
   if (missing) $("#ai-current").textContent = missing;
   // Pierwsze uruchomienie: otwórz notatki powitalne
