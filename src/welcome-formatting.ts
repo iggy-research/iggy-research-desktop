@@ -391,3 +391,390 @@ ${F}
 
 ← Wróć do [[Witaj]]
 `;
+
+/** The “Formatting” welcome note in English. */
+export const FORMATTING_NOTE_EN = `# Formatting
+
+This page shows everything the editor can do. Every example has a **How to write it** block underneath with the raw Markdown: copy it, or click the example to see the markup in place. #markdown
+
+> [!tip] Live preview
+> Markup disappears when the cursor leaves the line. **${mod}+Shift+M** switches between the formatted view and raw text, and **${mod}+P** shows the finished document.
+
+---
+
+## Headings
+
+# Heading 1
+## Heading 2
+### Heading 3
+#### Heading 4
+##### Heading 5
+###### Heading 6
+
+How to write it:
+
+${F}markdown
+# Heading 1
+## Heading 2
+### Heading 3
+#### Heading 4
+##### Heading 5
+###### Heading 6
+${F}
+
+The # signs must be followed by a space. Headings 1–3 are set in a classic typeface you can change in settings (⚙).
+
+---
+
+## Emphasis
+
+**Bold** · *italic* · ***bold italic*** · ~~strikethrough~~ · ==highlight== · \`inline code\` · **bold with *italic* inside**
+
+How to write it:
+
+${F}markdown
+**Bold**
+*italic*
+***bold italic***
+~~strikethrough~~
+==highlight==
+\`inline code\`
+**bold with *italic* inside**
+${F}
+
+Instead of asterisks you can use underscores: \`__bold__\` and \`_italic_\`.
+
+---
+
+## Paragraphs and line breaks
+
+Separate paragraphs with an empty line. A single Enter in the middle of a paragraph
+doesn't start a new paragraph, it just moves to a new line in the editor.
+
+This text is already a new paragraph.
+
+How to write it:
+
+${F}markdown
+First paragraph.
+
+Second paragraph, after an empty line.
+${F}
+
+---
+
+## Lists
+
+- Fruit
+  - Apples
+  - Pears
+    - Williams
+- Vegetables
+
+1. First step
+2. Second step
+   1. Sub-step
+3. Third step
+
+How to write it:
+
+${F}markdown
+- Fruit
+  - Apples
+  - Pears
+    - Williams
+- Vegetables
+
+1. First step
+2. Second step
+   1. Sub-step
+3. Third step
+${F}
+
+Indenting (Tab or two spaces) makes a sub-list. Instead of \`-\` you can write \`*\` or \`+\`.
+
+---
+
+## Tasks
+
+- [x] Buy a notebook
+- [x] Pick a font
+- [ ] Write the first chapter
+  - [ ] Draft
+  - [ ] Edit
+
+How to write it:
+
+${F}markdown
+- [x] Buy a notebook
+- [ ] Write the first chapter
+  - [ ] Draft
+${F}
+
+Click a checkbox to tick a task off. The editor changes \`[ ]\` to \`[x]\` for you.
+
+---
+
+## Links
+
+A link to a website: [the Iggy Research website](https://iggy-research.com)
+
+A link to a note: [[Welcome]] · with your own text: [[Second brain|my network of notes]] · to a heading: [[Focus#Focus]]
+
+A link to a note that doesn't exist yet: [[A note from the future]] (dashed underline; ${mod}+click creates it)
+
+How to write it:
+
+${F}markdown
+[the Iggy Research website](https://iggy-research.com)
+[[Welcome]]
+[[Second brain|my network of notes]]
+[[Focus#Focus]]
+${F}
+
+Open links with **${mod}+click** or **${mod}+Enter**. Typing \`[[\` shows a list of notes.
+
+---
+
+## Tags
+
+#idea · #project/book · #to-read
+
+How to write it:
+
+${F}markdown
+#idea #project/book #to-read
+${F}
+
+A tag starts with # without a space. A slash makes a nested tag.
+
+---
+
+## Quotes
+
+> Writing is thinking on paper.
+> — William Zinsser
+
+> A quote can have
+>> a nested quote inside.
+
+How to write it:
+
+${F}markdown
+> Writing is thinking on paper.
+> — William Zinsser
+
+> A quote can have
+>> a nested quote inside.
+${F}
+
+---
+
+## Callouts
+
+A callout is a highlighted box with an icon and a color. Type its kind in square brackets.
+
+> [!note] Note
+> A plain side remark.
+
+> [!info] Info
+> Something worth knowing.
+
+> [!tip] Tip
+> A small trick that makes work easier.
+
+> [!success] Success
+> It worked!
+
+> [!question] Question
+> What if…?
+
+> [!warning] Warning
+> Think twice.
+
+> [!danger] Danger
+> This cannot be undone.
+
+> [!bug] Bug
+> Something doesn't work here.
+
+> [!example] Example
+> What it looks like in practice.
+
+> [!quote] Quote
+> A highlighted statement.
+
+> [!abstract]
+> Without a title the box shows the kind's name.
+
+How to write it:
+
+${F}markdown
+> [!warning] Warning
+> The callout's content on the following lines.
+
+> [!tip]
+> Without a title the kind's name appears.
+${F}
+
+Available kinds: note, abstract (summary, tldr), info, todo, tip (hint, important), success (check, done), question (help, faq), warning (caution, attention), failure (fail, missing), danger (error), bug, example and quote (cite).
+
+---
+
+## Tables
+
+| Book | Author | Year | Rating |
+|:-----|:-------|:----:|-------:|
+| *Solaris* | Stanisław Lem | 1961 | ★★★★★ |
+| *Middlemarch* | George Eliot | 1871 | ★★★★☆ |
+| *The Doll* | Bolesław Prus | 1890 | ★★★★☆ |
+
+How to write it:
+
+${F}markdown
+| Book | Author | Year | Rating |
+|:-----|:-------|:----:|-------:|
+| *Solaris* | Stanisław Lem | 1961 | ★★★★★ |
+| *Middlemarch* | George Eliot | 1871 | ★★★★☆ |
+${F}
+
+Colons in the second row set alignment: \`:---\` left, \`:---:\` center, \`---:\` right. Click the table to edit it.
+
+---
+
+## Code
+
+Short code in a sentence: \`npm run tauri dev\`.
+
+A code block with syntax highlighting:
+
+${F}python
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+${F}
+
+How to write it:
+
+${F}\`markdown
+${F}python
+def fibonacci(n):
+    ...
+${F}
+${F}\`
+
+A block opens and closes with three \` characters. After the opening, type the language: python, js, rust, sql, bash, css…
+
+---
+
+## Math
+
+Inline math: $E = mc^2$, and the area of a circle is $\\pi r^2$.
+
+A display formula:
+
+$$
+\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}
+$$
+
+$$
+\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}
+$$
+
+How to write it:
+
+${F}latex
+Inline math: $E = mc^2$
+
+$$
+\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}
+$$
+${F}
+
+Formulas are written in LaTeX. There can be no space after the opening $ or before the closing one, so “costs $5 and $10” won't turn into a formula.
+
+---
+
+## Footnotes
+
+Nicolaus Copernicus published the heliocentric theory in 1543[^copernicus]. Footnotes number themselves[^numbering].
+
+[^copernicus]: In “On the Revolutions of the Heavenly Spheres”.
+[^numbering]: The numbers follow the order of references in the text, not their names.
+
+How to write it:
+
+${F}markdown
+Text with a reference[^copernicus].
+
+[^copernicus]: The footnote's content, anywhere in the document.
+${F}
+
+Hover over the number to see the content. In preview (${mod}+P) footnotes are collected at the bottom of the page.
+
+---
+
+## Images, video and audio
+
+![[School of Athens.jpg|420]]
+
+*Raphael, “The School of Athens” (1509–1511), Raphael Rooms in the Vatican. Plato points up, to the world of ideas, and Aristotle gestures down, to the world of experience. Two ways of thinking that have argued over the same question for two and a half thousand years: how do we know what we know?*
+
+How to write it:
+
+${F}markdown
+![[School of Athens.jpg|420]]
+![[Iggy Research.svg|96]]
+![[holiday.mp4]]
+![[interview.mp3]]
+![image description](images/photo.jpg)
+![](https://example.com/image.png)
+${F}
+
+The number after the bar is the width in pixels (\`|300\` or \`|300x200\`). The easiest way is to **drag a file** into the editor or **paste an image** (${mod}+V). It lands in the Attachments folder. Supported: PNG, JPG, GIF, WebP, SVG, MP4, WebM, MOV, MP3, WAV, OGG, M4A and PDF.
+
+---
+
+## Comments
+
+This text is always visible. %%And this one is a note to yourself: visible only in the editor, it disappears in preview and export.%%
+
+How to write it:
+
+${F}markdown
+%%A comment visible only in the editor.%%
+${F}
+
+---
+
+## Horizontal rule
+
+Three dashes on their own line draw a horizontal line, like the one below.
+
+---
+
+How to write it:
+
+${F}markdown
+---
+${F}
+
+---
+
+## Special characters
+
+When you want to type a character that normally formats text, put a backslash before it: \\*this is not italic\\*, \\# this is not a heading.
+
+How to write it:
+
+${F}markdown
+\\*this is not italic\\*
+\\# this is not a heading
+${F}
+
+---
+
+← Back to [[Welcome]]
+`;

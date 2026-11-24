@@ -29,7 +29,7 @@ import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
 import { renderMath } from "./blocks";
-import { WELCOME_NOTES, WELCOME_FILE, WELCOME_ASSETS } from "./welcome";
+import { welcomeSet } from "./welcome";
 import { Appearance, DEFAULT_APPEARANCE, BODY_FONTS, HEADING_FONTS, applyAppearance, fillSelect } from "./appearance";
 import { documentDir, homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -888,7 +888,8 @@ window.addEventListener("keydown", (e) => {
 // Przy pierwszym uruchomieniu w Dokumentach powstaje katalog „Iggy Research” z notatkami
 // połączonymi przez [[ ]]. Intro jest zwykłym plikiem, który można edytować albo usunąć.
 // W katalogu powitalnym notatki idą w kolejności czytania (Witaj → … → Formatowanie), nie alfabetycznie
-const WELCOME_ORDER = Object.keys(WELCOME_NOTES);
+// kolejność czytania: polski i angielski zestaw (rozpoznajemy po nazwie pliku)
+const WELCOME_ORDER = [...Object.keys(welcomeSet("pl").notes), ...Object.keys(welcomeSet("en").notes)];
 let welcomeDir: string | null = null;
 function welcomeRank(n: Note): number {
   if (!welcomeDir || n.path !== joinPath(welcomeDir, n.rel) || n.rel.includes("/")) return WELCOME_ORDER.length;
@@ -906,21 +907,22 @@ async function openWelcome() {
   }
   welcomeDir = dir;
   await mkdir(dir, { recursive: true });
-  // brakujące notatki odtwarzamy, istniejących (być może zmienionych) nie ruszamy
-  for (const [rel, text] of Object.entries(WELCOME_ASSETS)) {
+  // brakujące notatki odtwarzamy, istniejących (być może zmienionych) nie ruszamy; zestaw w języku interfejsu
+  const welcome = welcomeSet(uiLang());
+  for (const [rel, text] of Object.entries(welcome.assets)) {
     const p = joinPath(dir, ...rel.split("/"));
     await mkdir(dirOf(p), { recursive: true });
     if (await exists(p)) continue;
     if (typeof text === "string") await writeTextFile(p, text);
     else await writeFile(p, new Uint8Array(await (await fetch(text.url)).arrayBuffer()));
   }
-  for (const [name, text] of Object.entries(WELCOME_NOTES)) {
+  for (const [name, text] of Object.entries(welcome.notes)) {
     const p = joinPath(dir, name);
     if (!(await exists(p))) await writeTextFile(p, text);
   }
   if (!vault.root) { vault.root = dir; store.set("rootDir", dir); }
   await refreshVault();
-  await openPath(joinPath(dir, WELCOME_FILE), true);
+  await openPath(joinPath(dir, welcome.file), true);
 }
 
 // ---------- Modele ----------

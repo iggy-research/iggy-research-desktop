@@ -7,6 +7,7 @@
 import LOGO_SVG from "../icon.svg?raw";
 import { FORMATTING_NOTE } from "./welcome-formatting";
 import ATHENS_URL from "./assets/szkola-atenska.jpg?url";
+import { WELCOME_NOTES_EN, WELCOME_FILE_EN } from "./welcome-en";
 
 const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
@@ -109,7 +110,7 @@ Wyobraź sobie redaktora, który siedzi obok i czyta każdy akapit, gdy tylko po
 
 Wolisz pracować offline? Włącz w ustawieniach **Ollamę** albo **LM Studio**. Wtedy tekst nie opuszcza komputera, a klucz OpenRouter nie jest potrzebny.
 
-Od teraz po każdej przerwie w pisaniu albo przejściu do nowego akapitu w prawym panelu pojawią się uwagi: poprawność, jasność i konkretne propozycje „przed → po”.
+Od teraz po każdej przerwie w pisaniu albo przejściu do nowego akapitu w prawym panelu pojawią się uwagi: poprawność, jasność i spójność. Domyślnie redaktor tylko *wskazuje* problemy i mówi dlaczego — poprawiasz sam. Propozycje „przed → po” włączysz w ustawieniach.
 
 ## Twój redaktor, Twoje zasady
 
@@ -117,12 +118,12 @@ Prompt w ustawieniach możesz zmienić całkowicie. Kilka pomysłów:
 
 - „Sprawdź, czy argumentacja jest logiczna.”
 - „Uprość tak, żeby zrozumiało dziecko.”
-- „Zaproponuj mocniejsze pierwsze zdanie.”
+- „Wskaż, gdzie pierwsze zdanie jest za słabe.”
 - „Przetłumacz na angielski i oceń styl.”
 
 ## Cała notatka
 
-Nad uwagami są dwa przyciski:
+Nad uwagami są przyciski:
 
 - **Podsumuj** — teza notatki w jednym zdaniu, kluczowe punkty i pytania, które popchną myśl dalej.
 - **Linki** — które z Twoich notatek łączą się z tą i gdzie wstawić do nich link. Kliknij nazwę, żeby ją otworzyć.
@@ -131,6 +132,8 @@ Nad uwagami są dwa przyciski:
 - **Kontra** — adwokat diabła. Zaznacz fragment (albo stań w akapicie) i dostaniesz najmocniejszy kontrargument, najsłabsze założenie i pytanie, na które musisz odpowiedzieć.
 - **Dawniej** — „kiedyś myślałeś inaczej”: porównuje notatkę z Twoimi dawnymi notatkami na ten sam temat i pokazuje sprzeczności oraz zmiany zdania.
 
+W menu **Więcej** znajdziesz dialog sokratejski, test założeń, „co tu właściwie twierdzisz?”, czytelnika-amatora, pytania na start, kontrolę przed publikacją, nieoczywiste połączenia i wskrzeszanie dawnych notatek.
+
 AI nie pisze tu za Ciebie — pyta, wskazuje i przypomina. Tekst zostaje Twój.
 
 Każde z tych zadań może mieć w ustawieniach własny model: np. szybki Haiku do analizy na bieżąco, a mocniejszy Opus do podsumowań.
@@ -138,7 +141,7 @@ Każde z tych zadań może mieć w ustawieniach własny model: np. szybki Haiku 
 **${mod}+Shift+L** wymusza ponowną analizę bieżącego akapitu, a **${mod}+Shift+A** chowa panel, gdy chcesz pisać w samotności.
 
 > [!note] Prywatność
-> Do OpenRoutera trafia tylko analizowany akapit i fragment dokumentu jako kontekst (przy „Podsumuj” i „Linki” — cała notatka i nazwy pozostałych notatek). Z modelem lokalnym nic nie wychodzi z komputera. Klucz zostaje na Twoim komputerze.
+> Do OpenRoutera trafia tylko analizowany akapit i fragment dokumentu jako kontekst (przy narzędziach dla całej notatki — cała notatka i nazwy pozostałych notatek). Z modelem lokalnym nic nie wychodzi z komputera. Klucz zostaje na Twoim komputerze.
 
 ← Wróć do [[Witaj]] · Dalej: [[Drugi mózg]]
 `,
@@ -174,3 +177,16 @@ Link do notatki, której jeszcze nie ma, wygląda inaczej: [[Moja pierwsza myśl
 
   "Formatowanie.md": FORMATTING_NOTE,
 };
+
+const WELCOME_ASSETS_EN: Record<string, string | { url: string }> = {
+  "Attachments/Iggy Research.svg": LOGO_SVG,
+  // Raphael, “The School of Athens” (1509–1511), detail: Plato and Aristotle. Public domain (Wikimedia Commons).
+  "Attachments/School of Athens.jpg": { url: ATHENS_URL },
+};
+
+/** Zestaw notatek powitalnych dla języka interfejsu (polski albo angielski). */
+export function welcomeSet(lang: string) {
+  return lang === "pl"
+    ? { file: WELCOME_FILE, notes: WELCOME_NOTES, assets: WELCOME_ASSETS }
+    : { file: WELCOME_FILE_EN, notes: WELCOME_NOTES_EN, assets: WELCOME_ASSETS_EN };
+}
