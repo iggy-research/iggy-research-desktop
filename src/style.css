@@ -384,3 +384,12 @@ dialog input.code-input { font-family: var(--font-body); font-size: 20px; letter
 #ai-more-menu button { text-align: left; padding: 6px 10px; font-size: 12px; border-radius: 5px; }
 #ai-more-menu button:hover { background: var(--panel); }
 .cm-lay { text-decoration: underline dotted color-mix(in srgb, var(--accent) 85%, transparent); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+
+/* Dialog sokratejski */
+.dialog-log { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.dialog-turn { padding: 8px 10px; border-radius: 8px; }
+.dialog-turn.assistant { background: var(--panel); }
+.dialog-turn.user { border: 1px solid var(--border); margin-left: 18px; }
+.dialog-turn p { margin: 0; }
+.dialog-input { width: 100%; font: inherit; font-size: 13px; padding: 8px; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+.dialog-actions { display: flex; gap: 6px; margin-top: 6px; }

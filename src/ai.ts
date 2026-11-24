@@ -4,8 +4,8 @@ import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
 export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past"
-  | "claim" | "assumptions" | "lay" | "starter" | "precheck";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck"];
+  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -72,6 +72,10 @@ Maks. 8 pozycji. Pole "why" w języku tekstu. Jeśli wszystko jest jasne, zwró�
     starter: `Autor zaczyna pisać na temat z tytułu i początku notatki. Zamiast konspektu zadaj 5 pytań, na które odpowiedzi staną się tekstem:
 od „co naprawdę myślisz” przez „skąd to wiesz” i „co by cię przekonało, że się mylisz” po „dlaczego to ważne dla czytelnika”.
 Odpowiedz WYŁĄCZNIE listą 5 pytań w Markdown (1. … 5.), każde jedno zdanie, w języku notatki. Bez wstępu i bez podpowiedzi odpowiedzi.`,
+    socratic: `Prowadzisz z autorem dialog sokratejski o jego notatce. Zadajesz JEDNO krótkie pytanie naraz i czekasz na odpowiedź.
+Drąż: proś o definicje, przykłady, źródła pewności, konsekwencje i kontrprzykłady; wracaj do sprzeczności w odpowiedziach.
+Nie podawaj własnych tez, nie oceniaj, nie pisz za autora. Gdy autor napisze, że kończy (albo po ok. 8 pytaniach),
+podsumuj w 3 punktach, co ustalił — jego słowami — i jakie pytanie zostaje otwarte. Pisz w języku notatki.`,
     precheck: `Kontrola przed publikacją. Nie oceniaj stylu i nie przepisuj tekstu. Wypisz w Markdown, w języku tekstu:
 **Do sprawdzenia** — fakty, liczby, daty, nazwiska i cytaty, które warto zweryfikować (cytuj fragment).
 **Niespójności** — miejsca, gdzie tekst przeczy sam sobie albo zmienia nazewnictwo.
@@ -118,6 +122,10 @@ At most 8 items. Write "why" in the text's language. If everything is clear, ret
     starter: `The author is starting to write on the topic from the note's title and beginning. Instead of an outline, ask 5 questions whose answers will become the text:
 from "what do you really think" through "how do you know" and "what would convince you that you are wrong" to "why it matters to the reader".
 Reply ONLY with a Markdown list of 5 questions (1. … 5.), one sentence each, in the note's language. No intro and no hints at answers.`,
+    socratic: `You hold a Socratic dialogue with the author about their note. Ask ONE short question at a time and wait for the answer.
+Dig deeper: ask for definitions, examples, sources of certainty, consequences and counterexamples; return to contradictions in the answers.
+Do not give your own theses, do not judge, do not write for the author. When the author says they are done (or after about 8 questions),
+summarize in 3 points what they established — in their words — and which question remains open. Write in the note's language.`,
     precheck: `Pre-publication check. Do not judge style or rewrite the text. List in Markdown, in the text's language:
 **To verify** — facts, numbers, dates, names and quotes worth checking (quote the fragment).
 **Inconsistencies** — places where the text contradicts itself or changes naming.
@@ -136,7 +144,7 @@ export const isDefaultPrompt = (p: string) =>
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
   models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "",
-    claim: "", assumptions: "", lay: "", starter: "", precheck: "" },
+    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "" },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -172,7 +180,9 @@ export const setOnModelUsed = (f: (key: string) => void) => (onModelUsed = f);
 const controllers: Partial<Record<Task, AbortController>> = {};
 
 /** Strumieniuje odpowiedź modelu przypisanego do zadania. Poprzednie żądanie tego samego zadania jest przerywane. */
-async function chat(s: AiSettings, task: Task, docLang: string | null, system: string, user: string, onToken: (full: string) => void): Promise<string> {
+export interface ChatMessage { role: "user" | "assistant"; content: string }
+
+async function chat(s: AiSettings, task: Task, docLang: string | null, system: string, user: string | ChatMessage[], onToken: (full: string) => void): Promise<string> {
   const info = docLang ? DOC_LANGS[docLang] : null;
   if (info) system += `\n\nReply in ${info.en} (${info.native}).`;
   controllers[task]?.abort();
@@ -188,7 +198,7 @@ async function chat(s: AiSettings, task: Task, docLang: string | null, system: s
       body: JSON.stringify({
         model: ep.model,
         stream: true,
-        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        messages: [{ role: "system", content: system }, ...(typeof user === "string" ? [{ role: "user", content: user }] : user)],
       }),
     });
   } catch (e: any) {
@@ -266,3 +276,8 @@ export const textTool = (s: AiSettings, task: Exclude<Task, "analyze" | "summary
   docLang: string | null, target: string, doc: string, onToken: (full: string) => void) =>
   chat(s, task, docLang, defaultPrompt(task, docLang),
     `${target === doc ? "" : `CONTEXT (whole note, truncated):\n${doc.slice(0, 6000)}\n\n`}TEXT:\n${target.slice(0, 16000)}`, onToken);
+
+/** Dialog sokratejski: kolejna wypowiedź AI w rozmowie o notatce (historia w `turns`). */
+export const socraticTurn = (s: AiSettings, docLang: string | null, doc: string, turns: ChatMessage[], onToken: (full: string) => void) =>
+  chat(s, "socratic", docLang, `${defaultPrompt("socratic", docLang)}\n\nNOTE:\n${doc.slice(0, 12000)}`,
+    turns.length ? turns : [{ role: "user", content: "Start the dialogue with your first question." }], onToken);

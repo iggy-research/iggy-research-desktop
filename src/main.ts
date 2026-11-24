@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
@@ -136,8 +136,66 @@ $("#ai-more").onclick = (e) => { e.stopPropagation(); moreMenu.hidden = !moreMen
 document.addEventListener("click", () => { moreMenu.hidden = true; });
 moreMenu.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => (b.onclick = () => {
   moreMenu.hidden = true;
-  runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
+  if (b.dataset.tool === "socratic") runSocratic();
+  else runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
 }));
+
+/**
+ * Dialog sokratejski: AI zadaje jedno pytanie naraz, autor odpowiada w panelu.
+ * Zakończony dialog zapisuje się jako notatka „Dialogi/…” z linkiem do notatki źródłowej.
+ */
+function runSocratic() {
+  const sourceName = currentNoteName();
+  const doc = editor.getContent();
+  const turns: ChatMessage[] = [];
+  return runTask("socratic", "ai.working", async (cur) => {
+    cur.innerHTML = `<div class="dialog-log"></div>
+      <textarea class="dialog-input" rows="3" placeholder="${escapeHtml(t("ai.socraticPh"))}"></textarea>
+      <div class="dialog-actions"><button type="button" class="primary dialog-send">${escapeHtml(t("ai.socraticSend"))}</button>
+      <button type="button" class="dialog-save">${escapeHtml(t("ai.socraticSave"))}</button></div>`;
+    const log = cur.querySelector<HTMLElement>(".dialog-log")!, input = cur.querySelector<HTMLTextAreaElement>(".dialog-input")!;
+    const sendBtn = cur.querySelector<HTMLButtonElement>(".dialog-send")!, saveBtn = cur.querySelector<HTMLButtonElement>(".dialog-save")!;
+    const bubble = (role: "user" | "assistant", text: string) => {
+      const d = document.createElement("div");
+      d.className = `dialog-turn ${role}`;
+      d.innerHTML = role === "assistant" ? renderAi(text) : escapeHtml(text).replace(/\n/g, "<br>");
+      log.append(d);
+      d.scrollIntoView({ block: "end" });
+      return d;
+    };
+    const ask = async () => {
+      const live = bubble("assistant", "…");
+      sendBtn.disabled = true;
+      try {
+        const q = await socraticTurn(settings, docLang(), doc, turns, (partial) => { live.innerHTML = renderAi(partial); });
+        turns.push({ role: "assistant", content: q });
+      } catch (e: any) { if (e?.name !== "AbortError") live.textContent = String(e?.message ?? e); }
+      finally { sendBtn.disabled = false; input.focus(); }
+    };
+    sendBtn.onclick = async () => {
+      const a = input.value.trim();
+      if (!a) return;
+      input.value = "";
+      bubble("user", a);
+      turns.push({ role: "user", content: a });
+      await ask();
+    };
+    input.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendBtn.click(); } };
+    saveBtn.onclick = async () => {
+      if (!turns.length) return;
+      if (!vault.root) { await pickRoot(); if (!vault.root) return; }
+      const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-");
+      const body = turns.map((m) => `**${m.role === "assistant" ? t("ai.socraticQ") : t("ai.socraticA")}:** ${m.content.trim()}`).join("\n\n");
+      await leaveCurrent();
+      const note = await vault.create(`${t("ai.socraticFolder")}/${t("task.socratic")} — ${sourceName} ${stamp}`);
+      await writeTextFile(note.path, `# ${t("task.socratic")}: ${sourceName}\n\n${t("ai.socraticFrom")} [[${sourceName}]]\n\n${body}\n`);
+      await refreshVault();
+      await openPath(note.path, true);
+    };
+    await ask();
+    return null;
+  });
+}
 
 /** Wspólny przebieg zadania AI na żądanie: tytuł, status z nazwą modelu, błędy, historia. */
 async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cur: HTMLElement) => Promise<string | null>, allowShort = false) {
