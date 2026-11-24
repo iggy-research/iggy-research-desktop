@@ -281,3 +281,42 @@ dialog { max-height: 90vh; overflow-y: auto; }
 .lib-head > span { display: flex; align-items: center; gap: 2px; }
 .lib-head button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; line-height: 0; }
 .lib-head button .icon { display: block; }
+
+/* Panel AI: akcje i linki */
+.ai-actions { display: flex; gap: 6px; margin: -4px 0 10px; }
+.ai-actions button { font-size: 11px; padding: 2px 8px; }
+#ai-current a.ai-link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); cursor: pointer; }
+#ai-current .ai-model { color: var(--muted); font-size: 11px; margin-top: 10px; }
+
+/* Ustawienia: modele */
+dialog .field-label { margin-bottom: 4px; }
+dialog .hint { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+#task-models { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.task-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
+.task-row + .task-row, .task-row + #model-picker + .task-row { border-top: 1px solid var(--border); }
+.task-row > span { flex: 0 0 150px; }
+.task-row > button { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row > button small { color: var(--muted); }
+#model-picker { border-top: 1px solid var(--border); padding: 8px; background: var(--panel); }
+.mp-bar { display: flex; gap: 6px; }
+.mp-bar input { flex: 1; padding: 6px 8px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 5px; }
+.mp-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.mp-tabs button { font-size: 11px; padding: 2px 8px; }
+.mp-tabs button.active { background: var(--accent); color: #fff; }
+.mp-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; }
+.mp-list li { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; cursor: pointer; }
+.mp-list li + li { border-top: 1px solid var(--border); }
+.mp-list li:hover { background: var(--panel); }
+.mp-list li.selected { box-shadow: inset 3px 0 0 var(--accent); }
+.mp-list li.mp-more { color: var(--muted); cursor: default; font-size: 12px; }
+.mp-star, .mp-star-gap { flex: 0 0 22px; background: none; border: 0; padding: 0; color: var(--muted); font-size: 14px; line-height: 1.2; cursor: pointer; }
+.mp-star.on { color: #c9921a; }
+.mp-main { flex: 1; min-width: 0; }
+.mp-vendor { color: var(--muted); font-size: 11px; }
+.mp-meta { color: var(--muted); font-size: 11px; }
+.mp-custom { display: flex; gap: 6px; margin-top: 6px; }
+dialog .mp-custom input { flex: 1; margin-top: 0; }
+.mp-status { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.local-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.local-row label { flex: 0 0 110px; margin: 0; }
+dialog .local-row input[type=text] { flex: 1; margin-top: 0; }

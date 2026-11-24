@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost https: data: blob:; media-src 'self' asset: http://asset.localhost https: blob:; frame-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://openrouter.ai",
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost https: data: blob:; media-src 'self' asset: http://asset.localhost https: blob:; frame-src 'self' asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://openrouter.ai http://localhost:* http://127.0.0.1:*",
       "assetProtocol": {
         "enable": true,
         "scope": [

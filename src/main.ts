@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, AiSettings, DEFAULT_SETTINGS } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASKS } from "./ai";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -21,6 +21,8 @@ import { Appearance, DEFAULT_APPEARANCE, BODY_FONTS, HEADING_FONTS, applyAppeara
 import { documentDir, homeDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { EditorView } from "@codemirror/view";
+import { loadCatalog, modelInfo, formatPrice, CatalogCache } from "./models";
+import { createModelPicker } from "./modelpicker";
 import { setMediaResolver, embedHtml, kindOf, parseEmbed, mediaUrl } from "./media";
 
 const $ = <T extends HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -33,6 +35,8 @@ let filePath: string | null = null;
 let draftName = "dokument.md"; // nazwa dla jeszcze niezapisanego pliku
 let dirty = false;
 let favorites = new Set<string>(); // ścieżki ulubionych plików
+let modelFavorites = new Set<string>(); // klucze ulubionych modeli
+let modelRecent: string[] = []; // ostatnio używane modele, najnowszy pierwszy
 const vault = new Vault();
 const ui = { library: false, live: true, focus: "off" as FocusMode, typewriter: false, preview: false, ai: true, dark: matchMedia("(prefers-color-scheme: dark)").matches };
 
@@ -51,13 +55,15 @@ async function runAnalysis(p: Paragraph) {
   const text = p.text.trim();
   if (text.length < 40 || /^(#|```|\|)/.test(text)) return; // pomijamy nagłówki, kod, tabele, krótkie
   const cur = $("#ai-current"), status = $("#ai-status");
-  if (analyzed.has(text)) { cur.innerHTML = marked.parse(analyzed.get(text)!) as string; return; }
-  if (!settings.apiKey) { cur.textContent = "Dodaj klucz OpenRouter w ustawieniach (⚙)."; return; }
-  status.textContent = "analizuję…";
+  if (analyzed.has(text)) { $("#ai-title").textContent = TASKS.analyze; cur.innerHTML = renderAi(analyzed.get(text)!); return; }
+  const missing = missingConfig(settings, "analyze");
+  if (missing) { cur.textContent = missing; return; }
+  $("#ai-title").textContent = TASKS.analyze;
+  status.textContent = `analizuję… · ${modelInfo(modelFor(settings, "analyze")).name}`;
   cur.classList.remove("ai-empty");
   try {
     const result = await analyzeParagraph(settings, text, editor.getContent(), (partial) => {
-      cur.innerHTML = marked.parse(partial) as string;
+      cur.innerHTML = renderAi(partial);
     });
     analyzed.set(text, result);
     pushHistory(text, result);
@@ -69,9 +75,49 @@ async function runAnalysis(p: Paragraph) {
   }
 }
 
+/** Podsumowanie albo sugestie linków dla całej notatki — na żądanie, nie w trakcie pisania. */
+async function runNoteTask(task: Exclude<Task, "analyze">) {
+  ui.ai = true; apply();
+  const cur = $("#ai-current"), status = $("#ai-status");
+  const doc = editor.getContent().trim();
+  $("#ai-title").textContent = TASKS[task];
+  cur.classList.remove("ai-empty");
+  if (doc.length < 40) { cur.textContent = "Notatka jest jeszcze za krótka."; return; }
+  const missing = missingConfig(settings, task);
+  if (missing) { cur.textContent = missing; return; }
+  if (task === "links" && !vault.notes.length) { cur.textContent = "Wybierz katalog biblioteki, żeby było z czym łączyć notatkę."; return; }
+  status.textContent = `${task === "summary" ? "podsumowuję" : "szukam połączeń"}… · ${modelInfo(modelFor(settings, task)).name}`;
+  cur.textContent = "";
+  const onToken = (partial: string) => { cur.innerHTML = renderAi(partial); };
+  try {
+    const result = task === "summary"
+      ? await summarizeNote(settings, doc, onToken)
+      : await suggestLinks(settings, doc, currentNoteName(), vault.notes.map((n) => n.name), onToken);
+    pushHistory(`${TASKS[task]}: ${currentNoteName()}`, result);
+    status.textContent = "";
+  } catch (e: any) {
+    if (e?.name === "AbortError") return;
+    status.textContent = "błąd";
+    cur.textContent = String(e?.message ?? e);
+  }
+}
+const currentNoteName = () => (filePath ?? draftName).split(/[\\/]/).pop()!.replace(/\.(md|markdown)$/i, "");
+
+/** Markdown z odpowiedzi AI; [[Notatka]] staje się klikalnym linkiem. */
+function renderAi(md: string): string {
+  return (marked.parse(md) as string).replace(/\[\[([^\[\]<>\n]+?)\]\]/g, (_, inner) =>
+    `<a class="ai-link" data-link="${inner.replace(/"/g, "&quot;")}">${inner.split("|").pop()}</a>`);
+}
+$("#ai-summary").onclick = () => runNoteTask("summary");
+$("#ai-links").onclick = () => runNoteTask("links");
+$("#ai-panel").addEventListener("click", (e) => {
+  const a = (e.target as HTMLElement).closest<HTMLElement>("a.ai-link");
+  if (a) { e.preventDefault(); openLink(linkTarget(a.dataset.link!)); }
+});
+
 function pushHistory(text: string, result: string) {
   const li = document.createElement("li");
-  li.innerHTML = `<blockquote>${escapeHtml(text.slice(0, 140))}${text.length > 140 ? "…" : ""}</blockquote>${marked.parse(result)}`;
+  li.innerHTML = `<blockquote>${escapeHtml(text.slice(0, 140))}${text.length > 140 ? "…" : ""}</blockquote>${renderAi(result)}`;
   $("#ai-history").prepend(li);
 }
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -622,6 +668,27 @@ async function openWelcome() {
   await openPath(joinPath(dir, WELCOME_FILE), true);
 }
 
+// ---------- Modele ----------
+async function refreshCatalog(localUrls = settings.localUrls, local = settings.local, force = false) {
+  const fresh = await loadCatalog((await store.get<CatalogCache>("modelCatalog")) ?? null, localUrls, local, force);
+  if (fresh) await store.set("modelCatalog", fresh);
+}
+setOnModelUsed((key) => {
+  modelRecent = [key, ...modelRecent.filter((k) => k !== key)].slice(0, 8);
+  store.set("modelRecent", modelRecent);
+});
+const picker = createModelPicker($("#model-picker"), {
+  favorites: modelFavorites,
+  recent: () => modelRecent,
+  saveFavorites: () => store.set("modelFavorites", [...modelFavorites]),
+  refresh: () => {
+    const f = ($("#settings-dialog") as HTMLDialogElement).querySelector("form")!;
+    return refreshCatalog(
+      { ollama: f.ollamaUrl.value.trim(), lmstudio: f.lmstudioUrl.value.trim() },
+      { ollama: f.localOllama.checked, lmstudio: f.localLmstudio.checked }, true);
+  },
+});
+
 // ---------- Settings ----------
 function openSettings() {
   const dlg = $("#settings-dialog") as HTMLDialogElement;
@@ -651,19 +718,67 @@ function openSettings() {
   preview();
 
   (f.apiKey as HTMLInputElement).value = settings.apiKey;
-  (f.model as HTMLInputElement).value = settings.model;
+  // Modele: wersja robocza, zapisywana dopiero po „Zapisz”
+  const draftModels = { ...settings.models };
+  const rows = $("#task-models");
+  const renderRows = () => {
+    picker.close();
+    rows.after($("#model-picker")); // picker bywa wewnątrz listy wierszy — wyjmij go, zanim ją wyczyścimy
+    rows.innerHTML = "";
+    for (const [task, label] of Object.entries(TASKS) as [Task, string][]) {
+      const key = draftModels[task];
+      const m = modelInfo(key || draftModels.analyze);
+      const row = document.createElement("div");
+      row.className = "task-row";
+      row.innerHTML = `<span>${label}</span><button type="button"></button>`;
+      const btn = row.querySelector("button")!;
+      btn.innerHTML = `${escapeHtml(key ? m.name : `Jak analiza akapitu (${m.name})`)} <small>· ${escapeHtml(m.vendor)} · ${escapeHtml(formatPrice(m))}</small>`;
+      btn.title = m.key;
+      btn.onclick = () => picker.open(row, key, task === "analyze" ? null : "Jak analiza akapitu", (k) => {
+        draftModels[task] = k || (task === "analyze" ? draftModels.analyze : "");
+        renderRows();
+      });
+      rows.append(row);
+    }
+  };
+  // Modele lokalne: zmiana przełącznika albo adresu od razu odświeża listę
+  const localOllama = f.localOllama as HTMLInputElement, localLm = f.localLmstudio as HTMLInputElement;
+  const ollamaUrl = f.ollamaUrl as HTMLInputElement, lmUrl = f.lmstudioUrl as HTMLInputElement;
+  localOllama.checked = settings.local.ollama; localLm.checked = settings.local.lmstudio;
+  ollamaUrl.value = settings.localUrls.ollama; lmUrl.value = settings.localUrls.lmstudio;
+  const readLocal = () => ({
+    local: { ollama: localOllama.checked, lmstudio: localLm.checked },
+    localUrls: { ollama: ollamaUrl.value.trim(), lmstudio: lmUrl.value.trim() },
+  });
+  let localTimer: number | undefined;
+  const reloadLocal = () => {
+    clearTimeout(localTimer);
+    localTimer = window.setTimeout(async () => {
+      const l = readLocal();
+      await refreshCatalog(l.localUrls, l.local, false);
+      picker.render(); renderRows();
+    }, 400);
+  };
+  [localOllama, localLm, ollamaUrl, lmUrl].forEach((el) => (el.oninput = reloadLocal));
+  renderRows();
   (f.debounceMs as HTMLInputElement).value = String(settings.debounceMs);
   (f.prompt as HTMLTextAreaElement).value = settings.prompt;
   (f.autoAnalyze as HTMLInputElement).checked = settings.autoAnalyze;
   (f.autosave as HTMLInputElement).checked = autosave;
   dlg.onclose = async () => {
-    if (dlg.returnValue !== "save") { applyAppearance(before); return; }
+    picker.close();
+    if (dlg.returnValue !== "save") {
+      applyAppearance(before);
+      refreshCatalog(settings.localUrls, settings.local, false); // cofnij podgląd modeli lokalnych
+      return;
+    }
     appearance = readAppearance();
     applyAppearance(appearance);
     store.set("appearance", appearance);
     settings = {
       apiKey: f.apiKey.value.trim(),
-      model: f.model.value.trim() || DEFAULT_SETTINGS.model,
+      models: { ...draftModels, analyze: draftModels.analyze || DEFAULT_SETTINGS.models.analyze },
+      ...readLocal(),
       debounceMs: Number(f.debounceMs.value) || DEFAULT_SETTINGS.debounceMs,
       prompt: f.prompt.value.trim() || DEFAULT_SETTINGS.prompt,
       autoAnalyze: f.autoAnalyze.checked,
@@ -681,7 +796,10 @@ function openSettings() {
 // ---------- Init ----------
 (async () => {
   store = await load("settings.json", { autoSave: true, defaults: {} });
-  settings = { ...DEFAULT_SETTINGS, ...((await store.get<AiSettings>("settings")) ?? {}) };
+  settings = migrateSettings(await store.get("settings"));
+  for (const k of (await store.get<string[]>("modelFavorites")) ?? []) modelFavorites.add(k);
+  modelRecent = (await store.get<string[]>("modelRecent")) ?? [];
+  refreshCatalog(); // w tle: lista modeli z OpenRoutera (cache 24 h) i modele lokalne
   welcomeDir = (await store.get<string>("welcomeDir")) ?? null;
   autosave = (await store.get<boolean>("autosave")) ?? true;
   appearance = { ...DEFAULT_APPEARANCE, ...((await store.get<Appearance>("appearance")) ?? {}) };
@@ -701,7 +819,8 @@ function openSettings() {
   editor.view.dispatch({ effects: refreshLinks.of(null) });
   updateStats();
   editor.view.focus();
-  if (!settings.apiKey) $("#ai-current").textContent = "Dodaj klucz OpenRouter w ustawieniach (⚙), aby włączyć analizę.";
+  const missing = missingConfig(settings, "analyze");
+  if (missing) $("#ai-current").textContent = missing;
   // Pierwsze uruchomienie: otwórz notatki powitalne
   if (!(await store.get<boolean>("welcomeNotes"))) {
     store.set("welcomeNotes", true);

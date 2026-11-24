@@ -105,7 +105,9 @@ Wyobraź sobie redaktora, który siedzi obok i czyta każdy akapit, gdy tylko po
 
 1. Kliknij **⚙** na górnym pasku.
 2. Wklej klucz z openrouter.ai/keys.
-3. Wybierz model, np. \`anthropic/claude-sonnet-4.5\`.
+3. Wybierz model z listy — domyślny Claude Sonnet 5.5 sprawdza się najlepiej. Wyszukiwarka przeszukuje cały katalog OpenRoutera, a przy każdym modelu widać cenę i okno kontekstu. Gwiazdką ☆ przypinasz ulubione.
+
+Wolisz pracować offline? Włącz w ustawieniach **Ollamę** albo **LM Studio**. Wtedy tekst nie opuszcza komputera, a klucz OpenRouter nie jest potrzebny.
 
 Od teraz po każdej przerwie w pisaniu albo przejściu do nowego akapitu w prawym panelu pojawią się uwagi: poprawność, jasność i konkretne propozycje „przed → po”.
 
@@ -118,10 +120,19 @@ Prompt w ustawieniach możesz zmienić całkowicie. Kilka pomysłów:
 - „Zaproponuj mocniejsze pierwsze zdanie.”
 - „Przetłumacz na angielski i oceń styl.”
 
+## Cała notatka
+
+Nad uwagami są dwa przyciski:
+
+- **Podsumuj** — teza notatki w jednym zdaniu, kluczowe punkty i pytania, które popchną myśl dalej.
+- **Linki** — które z Twoich notatek łączą się z tą i gdzie wstawić do nich link. Kliknij nazwę, żeby ją otworzyć.
+
+Każde z tych zadań może mieć w ustawieniach własny model: np. szybki Haiku do analizy na bieżąco, a mocniejszy Opus do podsumowań.
+
 **${mod}+Shift+L** wymusza ponowną analizę bieżącego akapitu, a **${mod}+Shift+A** chowa panel, gdy chcesz pisać w samotności.
 
 > [!note] Prywatność
-> Do OpenRoutera trafia tylko analizowany akapit i fragment dokumentu jako kontekst. Klucz zostaje na Twoim komputerze.
+> Do OpenRoutera trafia tylko analizowany akapit i fragment dokumentu jako kontekst (przy „Podsumuj” i „Linki” — cała notatka i nazwy pozostałych notatek). Z modelem lokalnym nic nie wychodzi z komputera. Klucz zostaje na Twoim komputerze.
 
 ← Wróć do [[Witaj]] · Dalej: [[Drugi mózg]]
 `,

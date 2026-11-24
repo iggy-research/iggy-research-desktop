@@ -42,8 +42,12 @@
         <article id="preview" hidden></article>
         <aside id="ai-panel">
           <div class="ai-head">
-            <strong>Analiza akapitu</strong>
+            <strong id="ai-title">Analiza akapitu</strong>
             <span id="ai-status"></span>
+          </div>
+          <div class="ai-actions">
+            <button id="ai-summary" title="Podsumuj notatkę: teza, punkty, pytania">Podsumuj</button>
+            <button id="ai-links" title="Zaproponuj linki do innych notatek">Linki</button>
           </div>
           <div id="ai-current" class="ai-empty">Zacznij pisać — analiza pojawi się po chwili przerwy.</div>
           <details id="ai-history-wrap">
@@ -90,9 +94,9 @@
         <label>Klucz OpenRouter
           <input type="password" name="apiKey" placeholder="sk-or-..." autocomplete="off" />
         </label>
-        <label>Model
-          <input type="text" name="model" placeholder="anthropic/claude-sonnet-4.5" />
-        </label>
+        <div class="field-label">Modele do zadań</div>
+        <div id="task-models"></div>
+        <div id="model-picker" hidden></div>
         <label>Opóźnienie analizy (ms)
           <input type="number" name="debounceMs" min="300" step="100" />
         </label>
@@ -100,6 +104,18 @@
           <textarea name="prompt" rows="8"></textarea>
         </label>
         <label class="row"><input type="checkbox" name="autoAnalyze" /> Analizuj automatycznie podczas pisania</label>
+
+        <h3>Modele lokalne</h3>
+        <p class="hint">Praca offline, a tekst nie opuszcza komputera. Modele pojawią się w zakładce „Lokalne”.</p>
+        <div class="local-row">
+          <label class="row"><input type="checkbox" name="localOllama" /> Ollama</label>
+          <input type="text" name="ollamaUrl" placeholder="http://localhost:11434" autocomplete="off" />
+        </div>
+        <div class="local-row">
+          <label class="row"><input type="checkbox" name="localLmstudio" /> LM Studio</label>
+          <input type="text" name="lmstudioUrl" placeholder="http://localhost:1234" autocomplete="off" />
+        </div>
+        <p class="hint">LM Studio: w zakładce Developer uruchom serwer i włącz „Enable CORS”.</p>
         <menu>
           <button value="cancel">Anuluj</button>
           <button value="save" class="primary">Zapisz</button>
