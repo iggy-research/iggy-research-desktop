@@ -103,7 +103,7 @@ export interface EditorHandle {
   setLive(on: boolean): void;
   /** Język tekstu dla sprawdzania pisowni (atrybut lang). */
   setSpellLang(lang: string): void;
-  setContent(text: string): void;
+  setContent(text: string, cursor?: number): void;
   getContent(): string;
 }
 
@@ -144,11 +144,14 @@ export function createEditor(
     setLive: (on) => view.dispatch({ effects: liveC.reconfigure(on ? livePreview : []) }),
     setTypewriter: (on) => view.dispatch({ effects: twC.reconfigure(on ? [typewriterPlugin, typewriterTheme] : []) }),
     // Wczytanie innego pliku nie trafia do historii, więc Ctrl+Z nie cofnie do poprzedniej notatki
-    setContent: (text) => view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: text },
-      selection: { anchor: 0 },
-      annotations: Transaction.addToHistory.of(false),
-    }),
+    setContent: (text, cursor = 0) => {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        selection: { anchor: Math.min(cursor, text.length) },
+        annotations: Transaction.addToHistory.of(false),
+      });
+      view.scrollDOM.scrollTop = 0; // otwarty plik zawsze od góry, nawet gdy kursor stoi niżej
+    },
     getContent: () => view.state.doc.toString(),
   };
 }

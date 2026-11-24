@@ -29,7 +29,9 @@ body {
   display: flex; align-items: center; gap: 4px; padding: 6px 14px;
   font-size: 12px; color: var(--muted);
 }
-#toolbar > :not(#save-dot), #statusbar > * { opacity: .35; transition: opacity .2s; }
+/* Pasek w spoczynku przygaszony, ale czytelny w obu motywach (wcześniej .35 i szary — zlewał się z tłem) */
+#toolbar, #statusbar { color: color-mix(in srgb, var(--fg) 72%, var(--bg)); }
+#toolbar > :not(#save-dot), #statusbar > * { opacity: .8; transition: opacity .2s; }
 #toolbar:hover > *, #statusbar:hover > * { opacity: 1; }
 .spacer { flex: 1; }
 button {

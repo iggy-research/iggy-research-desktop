@@ -576,10 +576,33 @@ async function leaveCurrent(): Promise<boolean> {
   if (keep) await saveFile();
   return true;
 }
+/**
+ * Gdzie postawić kursor po otwarciu pliku. Podgląd na żywo pokazuje surowy Markdown w linii z kursorem,
+ * więc nie stawiamy go na osadzeniu (logo, obraz) na początku notatki:
+ * - notatka powitalna (Welcome / Witaj): pusta linia pod wyróżnionym „==This place is for it.==”,
+ * - notatka zaczynająca się od osadzeń: początek pierwszej zwykłej linii tekstu,
+ * - w pozostałych przypadkach początek pliku.
+ */
+function initialCursor(text: string, path: string): number {
+  const lines = text.split("\n");
+  const offsetOf = (i: number) => lines.slice(0, i).reduce((n, l) => n + l.length + 1, 0);
+  if (/(^|[\\/])(Welcome|Witaj)\.md$/.test(path)) {
+    const i = lines.findIndex((l) => /^==.+==\s*$/.test(l.trim()));
+    if (i >= 0) return offsetOf(i + 1);
+  }
+  const isEmbed = (l: string) => /^!\[\[.*\]\]$|^!\[.*\]\(.*\)$/.test(l.trim());
+  if (lines.length && isEmbed(lines[0])) {
+    const i = lines.findIndex((l) => l.trim() && !isEmbed(l) && !/^#{1,6}\s/.test(l));
+    if (i >= 0) return offsetOf(i);
+  }
+  return 0;
+}
+
 async function openPath(p: string, reload = false) {
   if (p === filePath && !reload) { editor.view.focus(); return; }
   await leaveCurrent();
-  editor.setContent(await readTextFile(p));
+  const text = await readTextFile(p);
+  editor.setContent(text, initialCursor(text, p));
   filePath = p;
   analyzed.clear();
   setDirty(false);
@@ -1780,7 +1803,7 @@ function applyLanguage() {
   await vault.scan();
   const last = await store.get<string>("lastFile");
   if (last) {
-    try { editor.setContent(await readTextFile(last)); filePath = last; } catch { /* plik zniknął */ }
+    try { const text = await readTextFile(last); editor.setContent(text, initialCursor(text, last)); filePath = last; } catch { /* plik zniknął */ }
   }
   setDirty(false);
   apply();
