@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt, analyzePrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, conversationTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt, analyzePrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
@@ -137,9 +137,39 @@ document.addEventListener("click", () => { moreMenu.hidden = true; });
 moreMenu.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => (b.onclick = () => {
   moreMenu.hidden = true;
   if (b.dataset.tool === "socratic") runSocratic();
+  else if (b.dataset.tool === "conversation") runConversation();
   else if (b.dataset.tool === "connections" || b.dataset.tool === "resurface") runNotesTool(b.dataset.tool);
   else runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
 }));
+
+/** Rozmowa: odpowiedzi czytelników na opublikowany wpis z tej notatki → wątki i pytania; zapis jako notatka. */
+function runConversation() {
+  return runTask("conversation", "ai.working", async (cur) => {
+    const acc = sync.account;
+    if (!acc) { cur.textContent = t("pub.needLogin"); return null; }
+    if (!filePath) { cur.textContent = t("pub.needSaved"); return null; }
+    const rel = historyTarget(filePath).rel;
+    const res = await fetch(`${acc.server}/api/replies?source=${encodeURIComponent(rel)}`, { headers: { Authorization: `Token ${acc.token}` } });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const replies: { name: string; text: string; created_at: string }[] = await res.json();
+    if (!replies.length) { cur.textContent = t("ai.conversationNone"); return null; }
+    const head = `<p class="hint">${escapeHtml(t("ai.conversationCount", { n: replies.length }))}</p>`;
+    const result = await conversationTool(settings, docLang(), editor.getContent(), replies, (partial) => { cur.innerHTML = head + renderAi(partial); });
+    const save = document.createElement("button");
+    save.type = "button"; save.textContent = t("ai.socraticSave");
+    save.onclick = async () => {
+      const source = currentNoteName(), stamp = new Date().toISOString().slice(0, 10);
+      const quotes = replies.map((r) => `> ${r.text.replace(/\n/g, "\n> ")}\n> — ${r.name || t("ai.conversationAnon")}`).join("\n\n");
+      await leaveCurrent();
+      const note = await vault.create(`${t("ai.socraticFolder")}/${t("task.conversation")} — ${source} ${stamp}`);
+      await writeTextFile(note.path, `# ${t("task.conversation")}: ${source}\n\n${t("ai.conversationFrom")} [[${source}]]\n\n${result}\n\n## ${t("ai.conversationReplies")}\n\n${quotes}\n`);
+      await refreshVault();
+      await openPath(note.path, true);
+    };
+    cur.append(save);
+    return result;
+  });
+}
 
 /** Nieoczywiste połączenia (notatki z innych dziedzin) i wskrzeszanie (notatki nieruszane od 60+ dni). */
 function runNotesTool(task: "connections" | "resurface") {

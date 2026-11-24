@@ -4,8 +4,8 @@ import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
 export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past"
-  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic" | "connections" | "resurface";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic", "connections", "resurface"];
+  | "claim" | "assumptions" | "lay" | "starter" | "precheck" | "socratic" | "connections" | "resurface" | "conversation";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck", "socratic", "connections", "resurface", "conversation"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -85,6 +85,12 @@ Używaj WYŁĄCZNIE nazw z listy, w zapisie [[Nazwa]]. Pomiń połączenia powie
     resurface: `Dostajesz bieżącą notatkę i notatki autora, których nie ruszał od miesięcy. Wskaż te porzucone myśli, które warto teraz podjąć,
 bo pasują do tego, nad czym autor pracuje. Dla każdej (maks. 4): **[[Nazwa notatki]]** (ostatnio zmieniana: data) — co tam zostało niedokończone → jak łączy się z bieżącą pracą → pytanie na start.
 Używaj WYŁĄCZNIE nazw z listy, w zapisie [[Nazwa]]. Pisz w języku notatki, w Markdown.`,
+    conversation: `Dostajesz opublikowany tekst autora i odpowiedzi czytelników. Zamień je w materiał do dalszego myślenia:
+1. **Wątki** — maks. 5 tematów, które wracają w odpowiedziach (każdy: jedno zdanie + kto i ilu o tym pisało).
+2. **Pytania czytelników** — konkretne pytania, na które tekst nie odpowiada.
+3. **Niezgoda** — najmocniejsze zastrzeżenia, uczciwie streszczone.
+4. **Na następną notatkę** — 2–3 tematy, które warto rozwinąć.
+Nie oceniaj czytelników i nie broń autora. Cytuj krótko. Pisz w języku tekstu, w Markdown.`,
     precheck: `Kontrola przed publikacją. Nie oceniaj stylu i nie przepisuj tekstu. Wypisz w Markdown, w języku tekstu:
 **Do sprawdzenia** — fakty, liczby, daty, nazwiska i cytaty, które warto zweryfikować (cytuj fragment).
 **Niespójności** — miejsca, gdzie tekst przeczy sam sobie albo zmienia nazewnictwo.
@@ -142,6 +148,12 @@ Use ONLY names from the list, written as [[Name]]. Skip superficial links (same 
     resurface: `You get the current note and the author's notes untouched for months. Point out the abandoned thoughts worth picking up now
 because they fit what the author is working on. For each (at most 4): **[[Note name]]** (last changed: date) — what was left unfinished → how it connects to the current work → a question to start with.
 Use ONLY names from the list, written as [[Name]]. Write in the note's language, in Markdown.`,
+    conversation: `You get the author's published text and readers' replies. Turn them into material for further thinking:
+1. **Threads** — at most 5 recurring topics (each: one sentence + who and how many wrote about it).
+2. **Readers' questions** — specific questions the text doesn't answer.
+3. **Disagreement** — the strongest objections, fairly summarized.
+4. **For the next note** — 2–3 topics worth developing.
+Don't judge readers or defend the author. Quote briefly. Write in the text's language, in Markdown.`,
     precheck: `Pre-publication check. Do not judge style or rewrite the text. List in Markdown, in the text's language:
 **To verify** — facts, numbers, dates, names and quotes worth checking (quote the fragment).
 **Inconsistencies** — places where the text contradicts itself or changes naming.
@@ -179,7 +191,7 @@ export const analyzePrompt = (s: AiSettings, docLang: string | null) =>
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
   models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "",
-    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "", connections: "", resurface: "" },
+    claim: "", assumptions: "", lay: "", starter: "", precheck: "", socratic: "", connections: "", resurface: "", conversation: "" },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -324,3 +336,8 @@ export const notesTool = (s: AiSettings, task: "connections" | "resurface", docL
   chat(s, task, docLang, defaultPrompt(task, docLang),
     `NOTES:\n${notes.map((n) => `### [[${n.name}]]${n.note ? ` (${n.note})` : ""}\n${n.excerpt}`).join("\n\n")}\n\n` +
     `CURRENT NOTE ("${current}"):\n${doc.slice(0, 8000)}`, onToken);
+
+/** Rozmowa: tekst + odpowiedzi czytelników → wątki, pytania, niezgoda, tematy na następną notatkę. */
+export const conversationTool = (s: AiSettings, docLang: string | null, doc: string, replies: { name: string; text: string }[], onToken: (full: string) => void) =>
+  chat(s, "conversation", docLang, defaultPrompt("conversation", docLang),
+    `REPLIES:\n${replies.map((r, i) => `[${i + 1}] ${r.name || "anonymous"}: ${r.text}`).join("\n\n").slice(0, 20000)}\n\nTEXT:\n${doc.slice(0, 8000)}`, onToken);
