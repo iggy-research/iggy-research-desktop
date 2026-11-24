@@ -18,6 +18,9 @@
     "fs:allow-copy-file",
     "fs:allow-write-file",
     "fs:allow-remove",
-    { "identifier": "fs:scope", "allow": [{ "path": "**" }] }
+    "fs:allow-read-file",
+    "fs:allow-stat",
+    { "identifier": "fs:scope", "allow": [{ "path": "**" }] },
+    { "identifier": "http:default", "allow": [{ "url": "https://*" }, { "url": "https://*/*" }, { "url": "http://*" }, { "url": "http://*/*" }] }
   ]
 }

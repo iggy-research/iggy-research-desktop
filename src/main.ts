@@ -17,6 +17,8 @@ import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
 import { listSnapshots, readSnapshot, snapshot } from "./history";
 import { invoke } from "@tauri-apps/api/core";
+import { stat } from "@tauri-apps/plugin-fs";
+import * as pub from "./publish";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -639,6 +641,7 @@ const cmds: Record<string, () => void> = {
   settings: openSettings,
   help: () => { openWelcome(); },
   history: () => { openHistory(); },
+  publish: () => { openPublish(); },
   sync: () => { openSync(); },
 };
 document.querySelectorAll<HTMLButtonElement>("[data-cmd]").forEach((b) => (b.onclick = () => cmds[b.dataset.cmd!]()));
@@ -648,7 +651,7 @@ window.addEventListener("keydown", (e) => {
   if (!mod) return;
   const k = e.key.toLowerCase();
   const map: Record<string, () => void> = e.shiftKey
-    ? { d: toggleFavorite, m: cmds.live, e: cmds.library, n: newNote, o: () => { ui.library = true; apply(); ($("#lib-filter") as HTMLInputElement).focus(); }, f: cmds.focus, t: cmds.typewriter, a: cmds.ai, s: () => saveFile(true), l: () => { const p = paragraphAt(editor.view.state.doc, editor.view.state.selection.main.head); if (p) { analyzed.delete(p.text.trim()); runAnalysis(p); } } }
+    ? { u: () => openPublish(), d: toggleFavorite, m: cmds.live, e: cmds.library, n: newNote, o: () => { ui.library = true; apply(); ($("#lib-filter") as HTMLInputElement).focus(); }, f: cmds.focus, t: cmds.typewriter, a: cmds.ai, s: () => saveFile(true), l: () => { const p = paragraphAt(editor.view.state.doc, editor.view.state.selection.main.head); if (p) { analyzed.delete(p.text.trim()); runAnalysis(p); } } }
     : { s: () => saveFile(), o: openFile, n: newFile, p: cmds.preview, ",": openSettings };
   if (map[k]) { e.preventDefault(); map[k](); }
 });
@@ -822,6 +825,131 @@ function openSync() {
   dlg.showModal();
 }
 let gitRemote = "";
+
+// ---------- Publikacja ----------
+/** Rozwiązywanie osadzeń względem dowolnej notatki (jak podgląd, ale nie tylko dla otwartego pliku). */
+const resolveFor = (notePath: string) => (raw: string): string | null => {
+  let ref = raw;
+  try { ref = decodeURI(raw); } catch { /* */ }
+  if (isAbsolute(ref)) return ref;
+  const asset = vault.resolveAsset(ref);
+  if (asset) return asset.path;
+  return joinPath(dirOf(notePath), ...ref.split(/[\\/]/));
+};
+let publishCfg = { wp: { url: "", user: "", appPassword: "" }, ghost: { url: "", adminKey: "" }, site: { title: "", url: "" } };
+
+async function openPublish() {
+  const dlg = $("#publish-dialog") as HTMLDialogElement;
+  const f = dlg.querySelector("form")!;
+  const msg = $("#pub-msg");
+  msg.textContent = "";
+  const tabs = dlg.querySelectorAll<HTMLButtonElement>("[data-pub]");
+  const showTab = (name: string) => {
+    tabs.forEach((b) => b.classList.toggle("active", b.dataset.pub === name));
+    dlg.querySelectorAll<HTMLElement>("[data-pub-pane]").forEach((p) => (p.hidden = p.dataset.pubPane !== name));
+  };
+  tabs.forEach((b) => (b.onclick = () => showTab(b.dataset.pub!)));
+  showTab(sync.account ? "iggy" : "export");
+  dlg.showModal();
+  if (dirty && filePath) await saveFile();
+  if (!filePath) { msg.textContent = t("pub.needSaved"); return; }
+  const path = filePath, text = editor.getContent();
+  const target = historyTarget(path);
+  const name = fileName(path).replace(/\.(md|markdown|txt)$/i, "");
+  const meta = pub.noteMeta(text, name);
+  $("#pub-note").textContent = target.rel;
+  const resolve = resolveFor(path);
+  const run = async (fn: () => Promise<string | void>) => {
+    dlg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => (b.disabled = true));
+    msg.textContent = t("pub.working");
+    try { msg.textContent = (await fn()) ?? ""; } catch (e: any) { msg.textContent = String(e?.message ?? e); }
+    finally { dlg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => (b.disabled = false)); }
+  };
+  const linkMsg = (key: "pub.published" | "pub.sent", url: string) => t(key, { url });
+
+  // Blog Iggy
+  const acc = sync.account;
+  $("#pub-iggy-login").hidden = !!acc;
+  $("#pub-iggy-form").hidden = !acc;
+  let existing: pub.IggyPost | null = null;
+  const btn = $("#pub-iggy"), off = $("#pub-iggy-off");
+  $("#pub-tags").textContent = meta.tags.length ? t("pub.tags", { tags: meta.tags.map((x) => "#" + x).join(" ") }) : "";
+  const fill = () => {
+    (f.pubTitle as HTMLInputElement).value = existing?.title ?? meta.title;
+    (f.pubSlug as HTMLInputElement).value = existing?.slug ?? pub.slugify(meta.title);
+    (f.pubKind as HTMLSelectElement).value = existing?.kind ?? "post";
+    (f.pubVisibility as HTMLSelectElement).value = existing && existing.visibility !== "private" ? existing.visibility : "public";
+    btn.textContent = t(existing ? "pub.update" : "pub.publish");
+    off.hidden = !existing || existing.visibility === "private";
+  };
+  fill();
+  if (acc) {
+    existing = await pub.findIggyPost(acc, target.rel).catch(() => null);
+    fill();
+    if (existing && existing.visibility !== "private") msg.textContent = linkMsg("pub.published", existing.url);
+    btn.onclick = () => run(async () => {
+      const title = f.pubTitle.value.trim(), slug = pub.slugify(f.pubSlug.value || title);
+      const kind = f.pubKind.value as "post" | "garden";
+      existing = await pub.publishIggy(acc, {
+        // notatka w ogrodzie ma tytuł = nazwa pliku, żeby [[linki]] innych notatek do niej trafiały
+        title: kind === "garden" && !f.pubTitle.value.trim() ? name : title || name, slug, kind,
+        visibility: f.pubVisibility.value, tags: meta.tags, md: editor.getContent(), source: target.rel, resolve,
+      }, existing);
+      fill();
+      return existing.visibility === "private" ? t("pub.unpublished") : linkMsg("pub.published", existing.url);
+    });
+    off.onclick = () => run(async () => {
+      if (!existing) return;
+      existing = await pub.unpublishIggy(acc, existing);
+      fill();
+      return t("pub.unpublished");
+    });
+  }
+
+  // Eksport
+  const note = { path, rel: target.rel, name, text };
+  const pickDir = () => open({ directory: true, multiple: false, defaultPath: vault.root ?? undefined }) as Promise<string | null>;
+  $("#exp-md").onclick = () => run(async () => {
+    const dir = await pickDir(); if (!dir) return "";
+    await pub.exportMarkdown(note, dir, resolve); return t("pub.exported", { dir });
+  });
+  $("#exp-html").onclick = () => run(async () => {
+    const dir = await pickDir(); if (!dir) return "";
+    await pub.exportHtml(note, dir, resolve); return t("pub.exported", { dir });
+  });
+  (f.siteTitle as HTMLInputElement).value = publishCfg.site.title || (vault.root ? fileName(vault.root) : "");
+  (f.siteUrl as HTMLInputElement).value = publishCfg.site.url;
+  $("#exp-site").onclick = () => run(async () => {
+    if (!vault.root) return t("sync.noRoot");
+    const dir = await pickDir(); if (!dir) return "";
+    publishCfg.site = { title: f.siteTitle.value.trim(), url: f.siteUrl.value.trim() };
+    store.set("publishCfg", publishCfg);
+    const notes: pub.ExportNote[] = [];
+    for (const n of vault.notes) {
+      try { notes.push({ ...n, text: await readTextFile(n.path), mtime: (await stat(n.path)).mtime ?? undefined }); } catch { /* */ }
+    }
+    const count = await pub.exportSite(notes, dir, { title: publishCfg.site.title || "Iggy", siteUrl: publishCfg.site.url, resolveFor: (n) => resolveFor(n.path) });
+    return t("pub.exportedSite", { n: count, dir });
+  });
+
+  // WordPress i Ghost
+  (f.wpUrl as HTMLInputElement).value = publishCfg.wp.url; (f.wpUser as HTMLInputElement).value = publishCfg.wp.user;
+  (f.wpPass as HTMLInputElement).value = publishCfg.wp.appPassword;
+  (f.ghostUrl as HTMLInputElement).value = publishCfg.ghost.url; (f.ghostKey as HTMLInputElement).value = publishCfg.ghost.adminKey;
+  $("#pub-wp").onclick = () => run(async () => {
+    publishCfg.wp = { url: f.wpUrl.value.trim(), user: f.wpUser.value.trim(), appPassword: f.wpPass.value };
+    if (!publishCfg.wp.url || !publishCfg.wp.user || !publishCfg.wp.appPassword) return t("pub.fill");
+    store.set("publishCfg", publishCfg);
+    return linkMsg("pub.sent", await pub.publishWordPress(publishCfg.wp, meta.title, text, resolve, f.wpStatus.value));
+  });
+  $("#pub-ghost").onclick = () => run(async () => {
+    publishCfg.ghost = { url: f.ghostUrl.value.trim(), adminKey: f.ghostKey.value.trim() };
+    if (!publishCfg.ghost.url || !publishCfg.ghost.adminKey) return t("pub.fill");
+    store.set("publishCfg", publishCfg);
+    return linkMsg("pub.sent", await pub.publishGhost(publishCfg.ghost, meta.title, meta.tags, text, resolve, f.ghostStatus.value));
+  });
+  $("#pub-copy").onclick = () => run(async () => { await pub.copyHtml(meta.title, text); return t("pub.copied"); });
+}
 
 // ---------- Historia wersji ----------
 /** Gdzie trzymać historię pliku: w bibliotece, jeśli do niej należy, inaczej obok pliku. */
@@ -1019,6 +1147,7 @@ function applyLanguage() {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   await sync.init();
   gitRemote = (await store.get<string>("gitRemote")) ?? "";
+  publishCfg = { ...publishCfg, ...((await store.get<typeof publishCfg>("publishCfg")) ?? {}) };
   settings = migrateSettings(await store.get("settings"));
   langPrefs = { ...langPrefs, ...((await store.get<typeof langPrefs>("language")) ?? {}) };
   applyLanguage();

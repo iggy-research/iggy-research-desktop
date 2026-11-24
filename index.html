@@ -18,6 +18,7 @@
         <button data-cmd="typewriter" data-i18n-title="tb.typewriter">Typewriter</button>
         <button data-cmd="preview" data-i18n-title="tb.preview" data-i18n="tb.previewLabel"></button>
         <button data-cmd="ai" data-i18n-title="tb.ai">AI</button>
+        <button data-cmd="publish" data-i18n-title="tb.publish">↗</button>
         <button data-cmd="history" data-i18n-title="tb.history">⟲</button>
         <button data-cmd="sync" data-i18n-title="tb.sync">☁</button>
         <button data-cmd="theme" data-i18n-title="tb.theme">◐</button>
@@ -193,6 +194,77 @@
           <button type="button" id="hist-restore" class="primary" data-i18n="hist.restore" disabled></button>
           <button value="close" data-i18n="common.close"></button>
         </menu>
+      </form>
+    </dialog>
+    <dialog id="publish-dialog">
+      <form method="dialog">
+        <h2><span data-i18n="pub.title"></span> <small id="pub-note" class="hint"></small></h2>
+        <div class="mp-tabs pub-tabs">
+          <button type="button" data-pub="iggy" data-i18n="pub.tabIggy"></button>
+          <button type="button" data-pub="export" data-i18n="pub.tabExport"></button>
+          <button type="button" data-pub="wp">WordPress</button>
+          <button type="button" data-pub="ghost">Ghost</button>
+          <button type="button" data-pub="substack">Substack</button>
+        </div>
+        <section data-pub-pane="iggy">
+          <p class="hint" id="pub-iggy-login" data-i18n="pub.needLogin" hidden></p>
+          <div id="pub-iggy-form">
+            <label><span data-i18n="pub.postTitle"></span><input type="text" name="pubTitle" /></label>
+            <label><span data-i18n="pub.slug"></span><input type="text" name="pubSlug" /></label>
+            <div class="local-row">
+              <label><span data-i18n="pub.kind"></span>
+                <select name="pubKind"><option value="post" data-i18n="pub.kindPost"></option><option value="garden" data-i18n="pub.kindGarden"></option></select>
+              </label>
+              <label><span data-i18n="pub.visibility"></span>
+                <select name="pubVisibility">
+                  <option value="public" data-i18n="pub.public"></option>
+                  <option value="unlisted" data-i18n="pub.unlisted"></option>
+                  <option value="private" data-i18n="pub.private"></option>
+                </select>
+              </label>
+            </div>
+            <p class="hint" id="pub-tags"></p>
+            <label class="row" id="pub-newsletter-row" hidden><input type="checkbox" name="pubNewsletter" /> <span data-i18n="pub.newsletter"></span></label>
+            <div class="btn-row">
+              <button type="button" id="pub-iggy" class="primary"></button>
+              <button type="button" id="pub-iggy-off" data-i18n="pub.unpublish"></button>
+            </div>
+          </div>
+        </section>
+        <section data-pub-pane="export" hidden>
+          <div class="btn-row">
+            <button type="button" id="exp-md" data-i18n="pub.expMd"></button>
+            <button type="button" id="exp-html" data-i18n="pub.expHtml"></button>
+          </div>
+          <h3 data-i18n="pub.expSite"></h3>
+          <p class="hint" data-i18n="pub.expSiteHint"></p>
+          <label><span data-i18n="pub.siteTitle"></span><input type="text" name="siteTitle" /></label>
+          <label><span data-i18n="pub.siteUrl"></span><input type="text" name="siteUrl" placeholder="https://ja.github.io/notatki" /></label>
+          <div class="btn-row"><button type="button" id="exp-site" data-i18n="pub.expSiteBtn"></button></div>
+        </section>
+        <section data-pub-pane="wp" hidden>
+          <label><span data-i18n="pub.wpUrl"></span><input type="text" name="wpUrl" placeholder="https://moj-blog.pl" /></label>
+          <label><span data-i18n="pub.wpUser"></span><input type="text" name="wpUser" /></label>
+          <label><span data-i18n="pub.wpPass"></span><input type="password" name="wpPass" autocomplete="off" /></label>
+          <div class="btn-row">
+            <select name="wpStatus"><option value="draft" data-i18n="pub.draft"></option><option value="publish" data-i18n="pub.publishNow"></option></select>
+            <button type="button" id="pub-wp" class="primary" data-i18n="pub.send"></button>
+          </div>
+        </section>
+        <section data-pub-pane="ghost" hidden>
+          <label><span data-i18n="pub.ghostUrl"></span><input type="text" name="ghostUrl" placeholder="https://moj-blog.ghost.io" /></label>
+          <label><span data-i18n="pub.ghostKey"></span><input type="password" name="ghostKey" placeholder="id:secret" autocomplete="off" /></label>
+          <div class="btn-row">
+            <select name="ghostStatus"><option value="draft" data-i18n="pub.draft"></option><option value="published" data-i18n="pub.publishNow"></option></select>
+            <button type="button" id="pub-ghost" class="primary" data-i18n="pub.send"></button>
+          </div>
+        </section>
+        <section data-pub-pane="substack" hidden>
+          <p class="hint" data-i18n="pub.substackHint"></p>
+          <div class="btn-row"><button type="button" id="pub-copy" class="primary" data-i18n="pub.copyHtml"></button></div>
+        </section>
+        <p id="pub-msg" class="hint"></p>
+        <menu><button value="close" data-i18n="common.close"></button></menu>
       </form>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
