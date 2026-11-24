@@ -913,13 +913,25 @@ function openSync() {
   (f.server as HTMLInputElement).value = customServer || (f.server as HTMLInputElement).value;
   (dlg.querySelector(".sync-advanced") as HTMLDetailsElement).open = !!(f.server as HTMLInputElement).value;
   (f.gitRemote as HTMLInputElement).value = gitRemote;
-  const login = (register: boolean) => run(async () => {
-    const server = f.server.value.trim() || DEFAULT_SERVER, email = f.email.value.trim(), password = f.password.value;
-    if (register && $("#sync-username-row").hidden) { $("#sync-username-row").hidden = false; f.username.focus(); return; }
-    if (!email || !password) { msg.textContent = t("sync.fillFields"); return; }
-    if (register && !f.username.value.trim()) { msg.textContent = t("sync.needUsername"); return; }
-    await sync.login(server, email, password, register, f.username.value.trim());
-    f.password.value = "";
+  // Logowanie bez haseł: e-mail → 6-cyfrowy kod z maila (konto powstaje przy pierwszym logowaniu)
+  const codeRow = $("#sync-code-row"), loginBtn = $("#sync-login"), resendBtn = $("#sync-resend");
+  const resetLogin = () => { codeRow.hidden = true; resendBtn.hidden = true; loginBtn.textContent = t("sync.sendCode"); (f.code as HTMLInputElement).value = ""; };
+  if (!sync.account) resetLogin();
+  const sendCode = () => run(async () => {
+    const server = f.server.value.trim() || DEFAULT_SERVER, email = f.email.value.trim();
+    if (!email) { msg.textContent = t("sync.fillFields"); return; }
+    await sync.requestCode(server, email, uiLang());
+    codeRow.hidden = false; resendBtn.hidden = false;
+    loginBtn.textContent = t("sync.login");
+    msg.textContent = t("sync.codeSent", { email });
+    (f.code as HTMLInputElement).focus();
+  });
+  const login = () => run(async () => {
+    if (codeRow.hidden) return sendCode();
+    const server = f.server.value.trim() || DEFAULT_SERVER, email = f.email.value.trim(), code = (f.code as HTMLInputElement).value.trim();
+    if (!/^\d{6}$/.test(code)) { msg.textContent = t("sync.codeFormat"); return; }
+    await sync.login(server, email, code);
+    resetLogin();
     const remote = await sync.pullSettings().catch(() => null);
     if (remote && Object.keys(remote).length) await applySyncedSettings(remote);
     else await sync.pushSettings(syncedSettings());
@@ -927,8 +939,10 @@ function openSync() {
     await show();
     await sync.sync().catch(() => {});
   });
-  $("#sync-login").onclick = () => login(false);
-  $("#sync-register").onclick = () => login(true);
+  loginBtn.onclick = () => login();
+  resendBtn.onclick = () => { (f.code as HTMLInputElement).value = ""; codeRow.hidden = true; sendCode(); };
+  (f.code as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); login(); } };
+  (f.email as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); login(); } };
   $("#sync-now").onclick = () => run(() => sync.sync());
   $("#sync-logout").onclick = () => run(async () => { await sync.logout(); $("#sync-status").textContent = ""; await show(); });
   $("#sync-unlock").onclick = () => run(async () => {

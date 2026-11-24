@@ -374,3 +374,4 @@ dialog label.scope-row { margin: 0; padding: 2px 0; }
 dialog label.scope-note { padding-left: 22px; }
 .sync-advanced { margin: 0 0 12px; font-size: 12px; }
 .sync-advanced summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
+dialog input.code-input { font-family: var(--font-body); font-size: 20px; letter-spacing: .4em; text-align: center; }

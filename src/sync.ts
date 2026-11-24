@@ -58,11 +58,16 @@ export class Sync {
     return res.status === 204 ? (undefined as T) : res.json();
   }
 
-  async login(server: string, email: string, password: string, register = false, username = "") {
+  /** Logowanie bez haseł, krok 1: serwer wysyła 6-cyfrowy kod na e-mail. */
+  async requestCode(server: string, email: string, lang: string) {
     const acc: Account = { server: server.trim().replace(/\/+$/, ""), token: "", username: "", email };
-    const data = await this.api(register ? "auth/register" : "auth/login", {
-      method: "POST", body: JSON.stringify(register ? { email, password, username } : { email, password }),
-    }, acc);
+    await this.api("auth/code", { method: "POST", body: JSON.stringify({ email, lang }) }, acc);
+  }
+
+  /** Krok 2: kod → token. Konto powstaje przy pierwszym logowaniu. */
+  async login(server: string, email: string, code: string) {
+    const acc: Account = { server: server.trim().replace(/\/+$/, ""), token: "", username: "", email };
+    const data = await this.api("auth/verify", { method: "POST", body: JSON.stringify({ email, code }) }, acc);
     this.account = { ...acc, token: data.token, username: data.user.username, email: data.user.email };
     await this.d.store().set("syncAccount", this.account);
     await this.d.store().set("syncState", null); // nowe konto = pełna synchronizacja od zera

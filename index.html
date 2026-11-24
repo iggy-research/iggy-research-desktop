@@ -143,13 +143,10 @@
         <div id="sync-out">
           <p class="hint" data-i18n="sync.intro"></p>
           <label><span data-i18n="sync.email"></span>
-            <input type="text" name="email" autocomplete="username" />
+            <input type="email" name="email" autocomplete="email" />
           </label>
-          <label><span data-i18n="sync.password"></span>
-            <input type="password" name="password" autocomplete="current-password" />
-          </label>
-          <label id="sync-username-row" hidden><span data-i18n="sync.username"></span>
-            <input type="text" name="username" placeholder="np. ala" autocomplete="off" />
+          <label id="sync-code-row" hidden><span data-i18n="sync.code"></span>
+            <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="code-input" />
           </label>
           <details class="sync-advanced">
             <summary data-i18n="sync.customServer"></summary>
@@ -159,8 +156,8 @@
             <p class="hint" data-i18n="sync.customServerHint"></p>
           </details>
           <div class="btn-row">
-            <button type="button" id="sync-login" class="primary" data-i18n="sync.login"></button>
-            <button type="button" id="sync-register" data-i18n="sync.register"></button>
+            <button type="button" id="sync-login" class="primary" data-i18n="sync.sendCode"></button>
+            <button type="button" id="sync-resend" data-i18n="sync.resend" hidden></button>
           </div>
         </div>
         <div id="sync-in" hidden>
