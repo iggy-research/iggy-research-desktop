@@ -1290,6 +1290,36 @@ async function openPublish() {
       fill();
       return t("pub.unpublished");
     });
+
+    // Cały folder jednym kliknięciem: każda notatka z folderu głównego jako wpis w blogu o nazwie folderu
+    const folderBtn = $("#pub-folder") as HTMLButtonElement;
+    const folderNotes = topFolder ? vault.notes.filter((n) => n.rel.startsWith(`${topFolder}/`)) : [];
+    folderBtn.hidden = folderNotes.length < 2;
+    folderBtn.textContent = t("pub.folder", { folder: topFolder, n: folderNotes.length });
+    folderBtn.onclick = () => run(async () => {
+      const kind = f.pubKind.value as "post" | "garden", visibility = f.pubVisibility.value as pub.IggyPost["visibility"];
+      if (!(await ask(t("pub.folderConfirm", { n: folderNotes.length, folder: topFolder, visibility: t(`pub.${visibility}`) }), { title: "Iggy Research" }))) return "";
+      if (dirty && filePath) await saveFile();
+      telemetry.track("publish.iggy");
+      const failed: string[] = [];
+      let done = 0;
+      for (const n of folderNotes) {
+        msg.textContent = t("pub.folderProgress", { done, n: folderNotes.length });
+        try {
+          const md = await readTextFile(n.path);
+          const m = pub.noteMeta(md, n.name);
+          const prev = await pub.findIggyPost(acc, n.rel).catch(() => null);
+          await pub.publishIggy(acc, {
+            title: kind === "garden" ? n.name : m.title, slug: prev?.slug ?? pub.slugify(n.name), kind, visibility,
+            tags: m.tags, blogFolder: topFolder, md, source: n.rel, resolve: resolveFor(n.path),
+          }, prev);
+          done++;
+        } catch (e: any) { failed.push(`${n.name}: ${e?.message ?? e}`); }
+      }
+      existing = await pub.findIggyPost(acc, target.rel).catch(() => existing);
+      fill();
+      return t("pub.folderDone", { done, n: folderNotes.length }) + (failed.length ? ` · ${failed.join(" · ")}` : "");
+    });
   }
 
   // Eksport
