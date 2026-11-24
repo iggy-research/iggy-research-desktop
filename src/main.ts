@@ -11,10 +11,12 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
+import { clicheField, setCliches, locate } from "./cliches";
+import { relatedNotes } from "./related";
 import { listSnapshots, readSnapshot, snapshot } from "./history";
 import { invoke } from "@tauri-apps/api/core";
 import { stat } from "@tauri-apps/plugin-fs";
@@ -122,6 +124,85 @@ function renderAi(md: string): string {
 }
 $("#ai-summary").onclick = () => runNoteTask("summary");
 $("#ai-links").onclick = () => runNoteTask("links");
+$("#ai-cliche").onclick = () => runCliches();
+$("#ai-devil").onclick = () => runDevil();
+$("#ai-past").onclick = () => runPast();
+
+/** Wspólny przebieg zadania AI na żądanie: tytuł, status z nazwą modelu, błędy, historia. */
+async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cur: HTMLElement) => Promise<string | null>) {
+  ui.ai = true; apply();
+  const cur = $("#ai-current"), status = $("#ai-status");
+  $("#ai-title").textContent = taskLabel(task);
+  cur.classList.remove("ai-empty");
+  if (editor.getContent().trim().length < 40) { cur.textContent = t("ai.tooShort"); return; }
+  const missing = missingConfig(settings, task);
+  if (missing) { cur.textContent = missing; return; }
+  status.textContent = `${t(statusKey)} · ${modelInfo(modelFor(settings, task)).name}`;
+  cur.textContent = "";
+  try {
+    const result = await body(cur);
+    if (result !== null) pushHistory(`${taskLabel(task)}: ${currentNoteName()}`, result);
+    status.textContent = "";
+  } catch (e: any) {
+    if (e?.name === "AbortError") return;
+    status.textContent = t("ai.error");
+    cur.textContent = String(e?.message ?? e);
+  }
+}
+
+/** Wykrywacz banału: lista zdań z powodem + podkreślenia w edytorze. AI niczego nie poprawia. */
+function runCliches() {
+  return runTask("cliche", "ai.cliching", async (cur) => {
+    const doc = editor.getContent();
+    const raw = await findCliches(settings, docLang(), doc, () => {});
+    const items = parseCliches(raw);
+    if (!items) { cur.textContent = t("ai.clicheBad"); return null; }
+    const found = items.map((c) => ({ ...c, at: locate(doc, c.quote) }));
+    editor.view.dispatch({ effects: setCliches.of(found.filter((c) => c.at).map((c) => ({ ...c.at!, why: c.why }))) });
+    if (!found.length) { cur.textContent = t("ai.clicheNone"); return t("ai.clicheNone"); }
+    cur.innerHTML = `<p>${escapeHtml(t("ai.clicheFound", { n: found.length }))}</p><ol class="cliche-list">${found.map((c, i) =>
+      `<li data-i="${i}" class="${c.at ? "" : "missing"}"><q>${escapeHtml(c.quote)}</q><small>${escapeHtml(c.why)}${c.at ? "" : " " + escapeHtml(t("ai.clicheMissing"))}</small></li>`).join("")}</ol>` +
+      `<button type="button" class="cliche-clear">${escapeHtml(t("ai.clicheClear"))}</button>`;
+    cur.querySelectorAll<HTMLLIElement>(".cliche-list li").forEach((li) => (li.onclick = () => {
+      const at = found[+li.dataset.i!].at;
+      if (!at) return;
+      editor.view.dispatch({ selection: { anchor: at.from, head: at.to }, scrollIntoView: true });
+      editor.view.focus();
+    }));
+    cur.querySelector<HTMLButtonElement>(".cliche-clear")!.onclick = () => {
+      editor.view.dispatch({ effects: setCliches.of([]) });
+      cur.querySelector(".cliche-clear")?.remove();
+    };
+    return found.map((c) => `- „${c.quote}” — ${c.why}`).join("\n");
+  });
+}
+
+/** Adwokat diabła: zaznaczenie, a bez niego bieżący akapit (albo cała notatka, gdy akapit jest krótki). */
+function runDevil() {
+  return runTask("devil", "ai.deviling", async (cur) => {
+    const doc = editor.getContent(), sel = editor.view.state.selection.main;
+    const p = paragraphAt(editor.view.state.doc, sel.head);
+    let target = doc, scope = t("ai.devilNote");
+    if (!sel.empty && sel.to - sel.from > 20) { target = doc.slice(sel.from, sel.to); scope = t("ai.devilSelection"); }
+    else if (p && p.text.trim().length >= 80) { target = p.text.trim(); scope = t("ai.devilParagraph"); }
+    const head = `<p class="hint">${escapeHtml(scope)}</p>`;
+    const result = await devilsAdvocate(settings, docLang(), target, doc, (partial) => { cur.innerHTML = head + renderAi(partial); });
+    return result;
+  });
+}
+
+/** „Kiedyś myślałeś inaczej”: najbliższe tematycznie dawne notatki (wybrane lokalnie) kontra bieżący tekst. */
+function runPast() {
+  return runTask("past", "ai.pastSearching", async (cur) => {
+    if (!vault.notes.length) { cur.textContent = t("ai.needLibrary"); return null; }
+    const doc = editor.getContent();
+    const related = relatedNotes(doc, vault.notes.filter((n) => n.path !== filePath).map((n) => ({ name: n.name, path: n.path, text: vault.textOf(n.path) })));
+    if (!related.length) { cur.textContent = t("ai.pastNone"); return null; }
+    const head = `<p class="hint">${escapeHtml(t("ai.pastCompared", { names: related.map((r) => r.name).join(", ") }))}</p>`;
+    cur.innerHTML = head;
+    return pastSelf(settings, docLang(), doc, currentNoteName(), related, (partial) => { cur.innerHTML = head + renderAi(partial); });
+  });
+}
 $("#ai-panel").addEventListener("click", (e) => {
   const a = (e.target as HTMLElement).closest<HTMLElement>("a.ai-link");
   if (a) { e.preventDefault(); openLink(linkTarget(a.dataset.link!)); }
@@ -149,7 +230,7 @@ const editor = createEditor($("#editor"), (view, u) => {
     if (prev && !analyzed.has(prev.text.trim())) scheduleAnalysis(prev, true);
   }
   lastPara = p;
-}, [mediaDrop(), wikilinks({
+}, [clicheField, mediaDrop(), wikilinks({
   names: () => vault.notes.map((n) => n.name),
   exists: (t) => !!vault.resolve(t) || !!vault.resolveAsset(t),
   open: (t) => openLink(t),

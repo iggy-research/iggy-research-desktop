@@ -84,6 +84,9 @@ export class Vault {
     return this.assets.find((a) => a.rel.toLowerCase() === t) ?? this.assets.find((a) => a.name.toLowerCase() === t);
   }
 
+  /** Treść notatki z indeksu (bez czytania z dysku). */
+  textOf(path: string): string { return this.contents.get(path) ?? ""; }
+
   /** Notatki, które zawierają [[name]]. */
   backlinks(name: string, exceptPath?: string | null): { note: Note; snippet: string }[] {
     const t = name.toLowerCase(), out: { note: Note; snippet: string }[] = [];

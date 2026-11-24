@@ -356,3 +356,12 @@ dialog.wide { width: min(900px, 94vw); }
 #toolbar .icon-btn { padding: 4px 6px; line-height: 0; }
 #toolbar .tb-icon { display: block; width: 17px; height: 17px; }
 #toolbar #fav-star .tb-icon { width: 16px; height: 16px; }
+
+/* Wykrywacz banału */
+.cm-cliche { text-decoration: underline wavy color-mix(in srgb, #e0a030 80%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+.cliche-list { padding-left: 1.2em; }
+.cliche-list li { cursor: pointer; margin-bottom: 8px; }
+.cliche-list li.missing { cursor: default; opacity: .6; }
+.cliche-list li:hover q { text-decoration: underline; }
+.cliche-list small { display: block; color: var(--muted); }
+.ai-actions { flex-wrap: wrap; }

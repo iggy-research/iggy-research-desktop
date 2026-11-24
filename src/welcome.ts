@@ -127,6 +127,12 @@ Nad uwagami są dwa przyciski:
 - **Podsumuj** — teza notatki w jednym zdaniu, kluczowe punkty i pytania, które popchną myśl dalej.
 - **Linki** — które z Twoich notatek łączą się z tą i gdzie wstawić do nich link. Kliknij nazwę, żeby ją otworzyć.
 
+- **Banały** — zdania, które brzmią jak przeciętny tekst z internetu. Podkreśla je w tekście, ale nie poprawia: przepiszesz je po swojemu albo zostawisz świadomie.
+- **Kontra** — adwokat diabła. Zaznacz fragment (albo stań w akapicie) i dostaniesz najmocniejszy kontrargument, najsłabsze założenie i pytanie, na które musisz odpowiedzieć.
+- **Dawniej** — „kiedyś myślałeś inaczej”: porównuje notatkę z Twoimi dawnymi notatkami na ten sam temat i pokazuje sprzeczności oraz zmiany zdania.
+
+AI nie pisze tu za Ciebie — pyta, wskazuje i przypomina. Tekst zostaje Twój.
+
 Każde z tych zadań może mieć w ustawieniach własny model: np. szybki Haiku do analizy na bieżąco, a mocniejszy Opus do podsumowań.
 
 **${mod}+Shift+L** wymusza ponowną analizę bieżącego akapitu, a **${mod}+Shift+A** chowa panel, gdy chcesz pisać w samotności.

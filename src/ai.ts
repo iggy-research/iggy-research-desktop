@@ -3,8 +3,8 @@ import { t, uiLang } from "./i18n";
 import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
-export type Task = "analyze" | "summary" | "links";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links"];
+export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -16,6 +16,18 @@ export interface AiSettings {
   local: { ollama: boolean; lmstudio: boolean };
   localUrls: { ollama: string; lmstudio: string };
 }
+
+// Wykrywacz banału odpowiada JSON-em, żeby aplikacja mogła podkreślić zdania w edytorze
+const CLICHE_PL = `Jesteś redaktorem wyczulonym na język. Znajdź w tekście zdania, które brzmią jak przeciętny tekst z internetu albo wygenerowany przez AI: frazesy, puste ogólniki, korporacyjna nowomowa, oczywistości, efektowne zakończenia, które nic nie mówią.
+Nie poprawiaj ich i nie proponuj nowych wersji — autor zrobi to sam.
+Odpowiedz WYŁĄCZNIE tablicą JSON, bez Markdown i komentarzy:
+[{"quote": "fragment skopiowany z tekstu znak w znak", "why": "krótko, dlaczego to banał"}]
+Maks. 8 pozycji; fragment to jedno zdanie albo jego część (min. 4 słowa). Pole "why" w języku tekstu. Jeśli nic nie ma, zwróć [].`;
+const CLICHE_EN = `You are an editor with a sharp ear for language. Find sentences that sound like average internet text or AI output: clichés, empty generalities, corporate speak, truisms, punchy endings that say nothing.
+Do not fix them or offer new versions — the author will do that.
+Reply ONLY with a JSON array, no Markdown or commentary:
+[{"quote": "fragment copied from the text character for character", "why": "briefly, why it is a cliché"}]
+At most 8 items; a fragment is one sentence or part of it (min. 4 words). Write "why" in the text's language. If there is nothing, return [].`;
 
 /** Domyślne prompty w językach, w których je napisaliśmy; dla pozostałych języków angielski + „odpowiadaj po …”. */
 const PROMPTS: Record<"pl" | "en", Record<Task, string>> = {
@@ -35,6 +47,16 @@ Wskaż maks. 7 istniejących notatek, z którymi bieżąca notatka naprawdę si�
 Dla każdej: [[Nazwa]] — w którym miejscu notatki warto wstawić link i dlaczego (jedno zdanie).
 Na końcu, jeśli to ma sens, zaproponuj 1–2 nowe notatki do napisania jako [[Nowa notatka]] z dopiskiem „(nowa)”.
 Jeśli nic się nie łączy, napisz to wprost. Odpowiadaj w języku notatki, w Markdown.`,
+    cliche: CLICHE_PL,
+    devil: `Jesteś adwokatem diabła. Autor przedstawia tezę. Zbuduj najmocniejszy możliwy kontrargument — taki, jaki postawiłby inteligentny, dobrze poinformowany przeciwnik. Nie poprawiaj tekstu, nie chwal, nie łagodź.
+Odpowiedz w Markdown, w języku tekstu:
+1. **Teza, którą atakuję** — jedno zdanie.
+2. **Kontrargument** — 1–2 akapity.
+3. **Najsłabsze założenie** — jedno zdanie: co autor przyjmuje bez dowodu.
+4. **Pytanie, na które musisz odpowiedzieć** — jedno.`,
+    past: `Widzisz fragmenty starszych notatek autora. Porównaj z nimi bieżący tekst i wskaż miejsca, gdzie autor wcześniej myślał inaczej: sprzeczności, zmiany zdania, napięcia albo dawne argumenty, których dziś brakuje. Nie oceniaj, która wersja jest lepsza.
+Dla każdego: **[[Nazwa notatki]]** — co tam twierdziłeś (krótki cytat) → co twierdzisz teraz → pytanie, które z tego wynika. Maks. 5. Używaj WYŁĄCZNIE nazw z listy, dokładnie w zapisie [[Nazwa]].
+Jeśli nie ma realnych rozbieżności, napisz to wprost — niczego nie wymyślaj. Odpowiadaj w języku tekstu, w Markdown.`,
   },
   en: {
     analyze: `You are an editor. Review the given paragraph (in the context of the whole text) for:
@@ -52,6 +74,16 @@ Point to at most 7 existing notes the current note genuinely connects to. Use ON
 For each: [[Name]] — where in the note to add the link and why (one sentence).
 At the end, if it makes sense, propose 1–2 new notes to write as [[New note]] marked "(new)".
 If nothing connects, say so plainly. Reply in the note's language, in Markdown.`,
+    cliche: CLICHE_EN,
+    devil: `You are the devil's advocate. The author presents a claim. Build the strongest possible counterargument — the one a smart, well-informed opponent would make. Do not fix the text, do not praise, do not soften.
+Reply in Markdown, in the text's language:
+1. **The claim I attack** — one sentence.
+2. **Counterargument** — 1–2 paragraphs.
+3. **Weakest assumption** — one sentence: what the author takes for granted without evidence.
+4. **The question you must answer** — one.`,
+    past: `You can see excerpts from the author's older notes. Compare the current text with them and point out where the author used to think differently: contradictions, changes of mind, tensions, or old arguments missing today. Do not judge which version is better.
+For each: **[[Note name]]** — what you claimed there (short quote) → what you claim now → the question this raises. At most 5. Use ONLY names from the list, written exactly as [[Name]].
+If there are no real differences, say so plainly — do not invent any. Reply in the text's language, in Markdown.`,
   },
 };
 
@@ -64,7 +96,7 @@ export const isDefaultPrompt = (p: string) =>
 
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
-  models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "" },
+  models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "" },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -162,3 +194,29 @@ export const suggestLinks = (s: AiSettings, docLang: string | null, doc: string,
   chat(s, "links", docLang, defaultPrompt("links", docLang),
     `EXISTING NOTES:\n${notes.filter((n) => n !== current).slice(0, 400).map((n) => `- ${n}`).join("\n")}\n\n` +
     `CURRENT NOTE ("${current}"):\n${doc.slice(0, 12000)}`, onToken);
+
+export const findCliches = (s: AiSettings, docLang: string | null, doc: string, onToken: (full: string) => void) =>
+  chat(s, "cliche", docLang, defaultPrompt("cliche", docLang), `TEXT:\n${doc.slice(0, 20000)}`, onToken);
+
+/** Adwokat diabła: atakuje `target` (zaznaczenie, akapit albo całą notatkę) w kontekście całego tekstu. */
+export const devilsAdvocate = (s: AiSettings, docLang: string | null, target: string, doc: string, onToken: (full: string) => void) =>
+  chat(s, "devil", docLang, defaultPrompt("devil", docLang),
+    `${target === doc ? "" : `CONTEXT (whole note, truncated):\n${doc.slice(0, 6000)}\n\n`}CLAIM TO ATTACK:\n${target.slice(0, 8000)}`, onToken);
+
+/** „Kiedyś myślałeś inaczej”: bieżąca notatka + fragmenty najbliższych tematycznie dawnych notatek. */
+export const pastSelf = (s: AiSettings, docLang: string | null, doc: string, current: string,
+  related: { name: string; excerpt: string }[], onToken: (full: string) => void) =>
+  chat(s, "past", docLang, defaultPrompt("past", docLang),
+    `OLDER NOTES (excerpts):\n${related.map((r) => `### [[${r.name}]]\n${r.excerpt}`).join("\n\n")}\n\n` +
+    `CURRENT NOTE ("${current}"):\n${doc.slice(0, 10000)}`, onToken);
+
+/** Wynik wykrywacza banału: tolerujemy otoczkę (```json, komentarz) wokół tablicy. */
+export function parseCliches(raw: string): { quote: string; why: string }[] | null {
+  const m = /\[[\s\S]*\]/.exec(raw);
+  if (!m) return null;
+  try {
+    const arr = JSON.parse(m[0]);
+    return Array.isArray(arr) ? arr.filter((x) => x && typeof x.quote === "string" && x.quote.trim())
+      .map((x) => ({ quote: x.quote.trim(), why: String(x.why ?? "").trim() })) : null;
+  } catch { return null; }
+}
