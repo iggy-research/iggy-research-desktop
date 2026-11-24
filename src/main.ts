@@ -24,6 +24,7 @@ import * as pub from "./publish";
 import * as rss from "./rss";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { Telemetry } from "./telemetry";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -81,6 +82,7 @@ async function runAnalysis(p: Paragraph) {
       cur.innerHTML = renderAi(partial);
     });
     analyzed.set(text, result);
+    telemetry.track("ai.analyze");
     pushHistory(text, result);
     status.textContent = "";
   } catch (e: any) {
@@ -109,6 +111,7 @@ async function runNoteTask(task: Exclude<Task, "analyze">) {
       ? await summarizeNote(settings, docLang(), doc, onToken)
       : await suggestLinks(settings, docLang(), doc, currentNoteName(), vault.notes.map((n) => n.name), onToken);
     pushHistory(`${taskLabel(task)}: ${currentNoteName()}`, result);
+    telemetry.track(task === "summary" ? "ai.summary" : "ai.links");
     status.textContent = "";
   } catch (e: any) {
     if (e?.name === "AbortError") return;
@@ -143,6 +146,7 @@ async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cu
   try {
     const result = await body(cur);
     if (result !== null) pushHistory(`${taskLabel(task)}: ${currentNoteName()}`, result);
+    telemetry.track(task === "cliche" ? "ai.cliche" : task === "devil" ? "ai.devil" : "ai.past");
     status.textContent = "";
   } catch (e: any) {
     if (e?.name === "AbortError") return;
@@ -559,6 +563,7 @@ async function newNote() {
   while (vault.resolve(base)) base = `${t("lib.newNote")} ${++i}`;
   await leaveCurrent();
   const note = await vault.create(base);
+  telemetry.track("note.new");
   await openPath(note.path);
   startRename();
 }
@@ -965,7 +970,7 @@ function openSync() {
   resendBtn.onclick = () => { (f.code as HTMLInputElement).value = ""; codeRow.hidden = true; sendCode(); };
   (f.code as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); login(); } };
   (f.email as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); login(); } };
-  $("#sync-now").onclick = () => run(() => sync.sync());
+  $("#sync-now").onclick = () => run(() => { telemetry.track("sync.run"); return sync.sync(); });
   $("#sync-logout").onclick = () => run(async () => { await sync.logout(); $("#sync-status").textContent = ""; await show(); });
   $("#sync-unlock").onclick = () => run(async () => {
     const pass = (f.passphrase as HTMLInputElement).value;
@@ -989,6 +994,7 @@ function openSync() {
     store.set("gitRemote", gitRemote);
     if (dirty && filePath) await saveFile();
     gitMsg.textContent = t("sync.gitRunning");
+    telemetry.track("sync.git");
     try {
       gitMsg.textContent = await invoke<string>("git_sync", {
         root: vault.root, remote: gitRemote || null, message: `Iggy: ${new Date().toLocaleString()}`,
@@ -1025,6 +1031,7 @@ async function handleDeepLink(urls: string[]) {
 }
 onOpenUrl(handleDeepLink).catch(() => {});
 const DEFAULT_SERVER = "https://iggy-research.com"; // serwer Iggy; własny (self-hosting) w opcjach zaawansowanych
+const telemetry = new Telemetry(() => store, DEFAULT_SERVER);
 
 // ---------- Publikacja ----------
 /** Rozwiązywanie osadzeń względem dowolnej notatki (jak podgląd, ale nie tylko dla otwartego pliku). */
@@ -1109,6 +1116,7 @@ async function openPublish() {
       const blogFolder = blogInput.value.trim();
       if (!blogFolder) return t("pub.needBlog");
       const kind = f.pubKind.value as "post" | "garden";
+      telemetry.track("publish.iggy");
       existing = await pub.publishIggy(acc, {
         // notatka w ogrodzie ma tytuł = nazwa pliku, żeby [[linki]] innych notatek do niej trafiały
         title: kind === "garden" && !f.pubTitle.value.trim() ? name : title || name, slug, kind,
@@ -1138,11 +1146,11 @@ async function openPublish() {
   const pickDir = () => open({ directory: true, multiple: false, defaultPath: vault.root ?? undefined }) as Promise<string | null>;
   $("#exp-md").onclick = () => run(async () => {
     const dir = await pickDir(); if (!dir) return "";
-    await pub.exportMarkdown(note, dir, resolve); return t("pub.exported", { dir });
+    telemetry.track("publish.export"); await pub.exportMarkdown(note, dir, resolve); return t("pub.exported", { dir });
   });
   $("#exp-html").onclick = () => run(async () => {
     const dir = await pickDir(); if (!dir) return "";
-    await pub.exportHtml(note, dir, resolve); return t("pub.exported", { dir });
+    telemetry.track("publish.export"); await pub.exportHtml(note, dir, resolve); return t("pub.exported", { dir });
   });
   (f.siteTitle as HTMLInputElement).value = publishCfg.site.title || (vault.root ? fileName(vault.root) : "");
   (f.siteUrl as HTMLInputElement).value = publishCfg.site.url;
@@ -1167,15 +1175,17 @@ async function openPublish() {
     publishCfg.wp = { url: f.wpUrl.value.trim(), user: f.wpUser.value.trim(), appPassword: f.wpPass.value };
     if (!publishCfg.wp.url || !publishCfg.wp.user || !publishCfg.wp.appPassword) return t("pub.fill");
     store.set("publishCfg", publishCfg);
+    telemetry.track("publish.wordpress");
     return linkMsg("pub.sent", await pub.publishWordPress(publishCfg.wp, meta.title, text, resolve, f.wpStatus.value));
   });
   $("#pub-ghost").onclick = () => run(async () => {
     publishCfg.ghost = { url: f.ghostUrl.value.trim(), adminKey: f.ghostKey.value.trim() };
     if (!publishCfg.ghost.url || !publishCfg.ghost.adminKey) return t("pub.fill");
     store.set("publishCfg", publishCfg);
+    telemetry.track("publish.ghost");
     return linkMsg("pub.sent", await pub.publishGhost(publishCfg.ghost, meta.title, meta.tags, text, resolve, f.ghostStatus.value));
   });
-  $("#pub-copy").onclick = () => run(async () => { await pub.copyHtml(meta.title, text); return t("pub.copied"); });
+  $("#pub-copy").onclick = () => run(async () => { telemetry.track("publish.substack"); await pub.copyHtml(meta.title, text); return t("pub.copied"); });
 }
 
 // ---------- Czytnik RSS ----------
@@ -1226,6 +1236,7 @@ async function openReader() {
       li.onclick = () => {
         chosen = it;
         readItems.add(it.id); store.set("rssRead", [...readItems].slice(-5000));
+        telemetry.track("rss.read");
         article.classList.remove("hint");
         article.innerHTML = `<h3>${escapeHtml(it.title)}</h3><p class="hint">${escapeHtml([it.author, it.date?.toLocaleString(uiLang())].filter(Boolean).join(" · "))}</p>${rss.sanitize(it.html, it.link || it.feed)}`;
         openBtn.disabled = !it.link; noteBtn.disabled = false;
@@ -1272,6 +1283,7 @@ async function openReader() {
     const name = (it.title || "Źródło").replace(/[\\/:*?"<>|#^\[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
     await leaveCurrent();
     const note = await vault.create(`${t("rss.sources")}/${name}`);
+    telemetry.track("rss.save");
     const meta = [`[${feedTitle}](${it.link || it.feed})`, it.author, it.date?.toLocaleDateString(uiLang())].filter(Boolean).join(" · ");
     const body = rss.htmlToMarkdown(it.html).split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
     await writeTextFile(note.path, `# ${it.title || name}\n\n${t("rss.from")}: ${meta}\n\n${body}\n\n## ${t("rss.myThoughts")}\n\n`);
@@ -1336,6 +1348,7 @@ async function openHistory() {
   restore.onclick = async () => {
     if (chosen === null || !filePath) return;
     await snapshot(target.base, target.rel, editor.getContent(), true); // bieżąca treść też trafia do historii
+    telemetry.track("history.restore");
     editor.setContent(chosen);
     setDirty(true);
     await saveFile();
@@ -1430,6 +1443,7 @@ function openSettings() {
   $("#doc-lang-detected").textContent = detectedLang ? `(${t("set.docLangDetected", { lang: DOC_LANGS[detectedLang].native })})` : "";
   (f.autoAnalyze as HTMLInputElement).checked = settings.autoAnalyze;
   (f.autosave as HTMLInputElement).checked = autosave;
+  (f.telemetry as HTMLInputElement).checked = telemetry.enabled;
   dlg.onclose = async () => {
     picker.close();
     if (dlg.returnValue !== "save") {
@@ -1449,6 +1463,7 @@ function openSettings() {
       autoAnalyze: f.autoAnalyze.checked,
     };
     autosave = (f.autosave as HTMLInputElement).checked;
+    await telemetry.setEnabled((f.telemetry as HTMLInputElement).checked);
     store.set("autosave", autosave);
     if (autosave && dirty) scheduleAutosave(); else if (!autosave) clearTimeout(saveTimer);
     analyzed.clear();
@@ -1513,6 +1528,8 @@ function applyLanguage() {
   updateStats();
   editor.view.focus();
   if (sync.account) { sync.startAuto(); sync.sync().catch(() => {}); }
+  await telemetry.init();
+  telemetry.track("app.open");
   const missing = missingConfig(settings, "analyze");
   if (missing) $("#ai-current").textContent = missing;
   // Pierwsze uruchomienie: otwórz notatki powitalne
