@@ -67,17 +67,28 @@ jobs:
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      # Podpis i notaryzacja macOS (opcjonalnie): ustaw sekrety repo APPLE_*, a aplikacja przestanie wymagać
+      # „Otwórz” przy pierwszym uruchomieniu. Zmienne ustawiamy tylko, gdy sekret istnieje — pusta wartość
+      # sprawiłaby, że Tauri próbuje zaimportować pusty certyfikat. Bez sekretów aplikacja jest podpisana ad hoc.
+      - name: Apple signing (only if secrets are set)
+        if: runner.os == 'macOS'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Podpis i notaryzacja macOS (opcjonalnie): ustaw sekrety repo, a aplikacja przestanie wymagać
-          # „Otwórz mimo to”. Bez nich aplikacja jest podpisana ad hoc.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!v}" ]; then
+              { echo "$v<<__EOF__"; echo "${!v}"; echo "__EOF__"; } >> "$GITHUB_ENV"
+            fi
+          done
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: Iggy Research v__VERSION__
