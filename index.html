@@ -18,6 +18,7 @@
         <button data-cmd="typewriter" data-i18n-title="tb.typewriter">Typewriter</button>
         <button data-cmd="preview" data-i18n-title="tb.preview" data-i18n="tb.previewLabel"></button>
         <button data-cmd="ai" data-i18n-title="tb.ai">AI</button>
+        <button data-cmd="reader" data-i18n-title="tb.reader">≋</button>
         <button data-cmd="publish" data-i18n-title="tb.publish">↗</button>
         <button data-cmd="history" data-i18n-title="tb.history">⟲</button>
         <button data-cmd="sync" data-i18n-title="tb.sync">☁</button>
@@ -224,7 +225,7 @@
               </label>
             </div>
             <p class="hint" id="pub-tags"></p>
-            <label class="row" id="pub-newsletter-row" hidden><input type="checkbox" name="pubNewsletter" /> <span data-i18n="pub.newsletter"></span></label>
+            <label class="row" id="pub-newsletter-row"><input type="checkbox" name="pubNewsletter" /> <span data-i18n="pub.newsletter"></span></label>
             <div class="btn-row">
               <button type="button" id="pub-iggy" class="primary"></button>
               <button type="button" id="pub-iggy-off" data-i18n="pub.unpublish"></button>
@@ -265,6 +266,27 @@
         </section>
         <p id="pub-msg" class="hint"></p>
         <menu><button value="close" data-i18n="common.close"></button></menu>
+      </form>
+    </dialog>
+    <dialog id="reader-dialog" class="wide">
+      <form method="dialog">
+        <h2 data-i18n="rss.title"></h2>
+        <div class="btn-row">
+          <input type="text" name="feedUrl" data-i18n-placeholder="rss.addPh" autocomplete="off" />
+          <button type="button" id="rss-add" data-i18n="rss.add"></button>
+          <button type="button" id="rss-refresh" data-i18n="rss.refresh"></button>
+        </div>
+        <div class="rss-body">
+          <ul id="rss-feeds"></ul>
+          <ul id="rss-items"></ul>
+          <article id="rss-article" class="hint" data-i18n="rss.pick"></article>
+        </div>
+        <p id="rss-msg" class="hint"></p>
+        <menu>
+          <button type="button" id="rss-open" data-i18n="rss.open" disabled></button>
+          <button type="button" id="rss-note" class="primary" data-i18n="rss.toNote" disabled></button>
+          <button value="close" data-i18n="common.close"></button>
+        </menu>
       </form>
     </dialog>
     <script type="module" src="/src/main.ts"></script>

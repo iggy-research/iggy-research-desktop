@@ -19,6 +19,8 @@ import { listSnapshots, readSnapshot, snapshot } from "./history";
 import { invoke } from "@tauri-apps/api/core";
 import { stat } from "@tauri-apps/plugin-fs";
 import * as pub from "./publish";
+import * as rss from "./rss";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Vault, Note, LINK_RE, linkTarget, join as joinPath } from "./vault";
 import { wikilinks, refreshLinks } from "./wikilinks";
 import { calloutColor, footnotes, CODE_RE } from "./livepreview";
@@ -642,6 +644,7 @@ const cmds: Record<string, () => void> = {
   help: () => { openWelcome(); },
   history: () => { openHistory(); },
   publish: () => { openPublish(); },
+  reader: () => { openReader(); },
   sync: () => { openSync(); },
 };
 document.querySelectorAll<HTMLButtonElement>("[data-cmd]").forEach((b) => (b.onclick = () => cmds[b.dataset.cmd!]()));
@@ -896,7 +899,15 @@ async function openPublish() {
         visibility: f.pubVisibility.value, tags: meta.tags, md: editor.getContent(), source: target.rel, resolve,
       }, existing);
       fill();
-      return existing.visibility === "private" ? t("pub.unpublished") : linkMsg("pub.published", existing.url);
+      if (existing.visibility === "private") return t("pub.unpublished");
+      let extra = "";
+      if ((f.pubNewsletter as HTMLInputElement).checked && existing.kind === "post" && existing.visibility === "public") {
+        const r = await fetch(`${acc.server}/api/posts/${existing.id}/send-newsletter`, { method: "POST", headers: { Authorization: `Token ${acc.token}` } });
+        const body = await r.json().catch(() => ({}));
+        extra = r.ok ? ` · ${t("pub.newsletterQueued", { n: body.queued ?? 0 })}` : ` · ${body.detail ?? r.status}`;
+        (f.pubNewsletter as HTMLInputElement).checked = false;
+      }
+      return linkMsg("pub.published", existing.url) + extra;
     });
     off.onclick = () => run(async () => {
       if (!existing) return;
@@ -949,6 +960,115 @@ async function openPublish() {
     return linkMsg("pub.sent", await pub.publishGhost(publishCfg.ghost, meta.title, meta.tags, text, resolve, f.ghostStatus.value));
   });
   $("#pub-copy").onclick = () => run(async () => { await pub.copyHtml(meta.title, text); return t("pub.copied"); });
+}
+
+// ---------- Czytnik RSS ----------
+let feeds: rss.Feed[] = [];
+let readItems = new Set<string>();
+const feedItems = new Map<string, rss.Item[]>();
+
+async function openReader() {
+  const dlg = $("#reader-dialog") as HTMLDialogElement;
+  const f = dlg.querySelector("form")!;
+  const feedList = $("#rss-feeds"), itemList = $("#rss-items"), article = $("#rss-article"), msg = $("#rss-msg");
+  const openBtn = $("#rss-open") as HTMLButtonElement, noteBtn = $("#rss-note") as HTMLButtonElement;
+  let current: string | null = null; // null = wszystkie kanały
+  let chosen: rss.Item | null = null;
+  const saveFeeds = () => { store.set("rssFeeds", feeds); };
+  const renderFeeds = () => {
+    feedList.innerHTML = "";
+    if (!feeds.length) { feedList.innerHTML = `<li class="empty">${escapeHtml(t("rss.noFeeds"))}</li>`; return; }
+    const unread = (url: string | null) => [...feedItems.entries()].filter(([u]) => !url || u === url)
+      .reduce((n, [, items]) => n + items.filter((i) => !readItems.has(i.id)).length, 0);
+    const entry = (label: string, url: string | null) => {
+      const li = document.createElement("li");
+      const n = unread(url);
+      li.innerHTML = `<span>${escapeHtml(label)}</span>${n ? `<small>${n}</small>` : ""}`;
+      li.classList.toggle("selected", current === url);
+      li.onclick = () => { current = url; renderFeeds(); renderItems(); };
+      if (url) {
+        const rm = document.createElement("button");
+        rm.type = "button"; rm.className = "rss-rm"; rm.textContent = "×"; rm.title = t("rss.remove");
+        rm.onclick = (e) => { e.stopPropagation(); feeds = feeds.filter((x) => x.url !== url); feedItems.delete(url); if (current === url) current = null; saveFeeds(); renderFeeds(); renderItems(); };
+        li.append(rm);
+      }
+      feedList.append(li);
+    };
+    entry(t("rss.all"), null);
+    for (const fd of feeds) entry(fd.title, fd.url);
+  };
+  const renderItems = () => {
+    itemList.innerHTML = "";
+    const items = [...feedItems.entries()].filter(([u]) => !current || u === current).flatMap(([, i]) => i)
+      .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0)).slice(0, 300);
+    for (const it of items) {
+      const li = document.createElement("li");
+      const feedTitle = feeds.find((x) => x.url === it.feed)?.title ?? "";
+      li.innerHTML = `${escapeHtml(it.title || it.link)}<small>${escapeHtml(feedTitle)}${it.date ? " · " + it.date.toLocaleDateString(uiLang()) : ""}</small>`;
+      li.classList.toggle("unread", !readItems.has(it.id));
+      li.classList.toggle("selected", chosen?.id === it.id);
+      li.onclick = () => {
+        chosen = it;
+        readItems.add(it.id); store.set("rssRead", [...readItems].slice(-5000));
+        article.classList.remove("hint");
+        article.innerHTML = `<h3>${escapeHtml(it.title)}</h3><p class="hint">${escapeHtml([it.author, it.date?.toLocaleString(uiLang())].filter(Boolean).join(" · "))}</p>${rss.sanitize(it.html, it.link || it.feed)}`;
+        openBtn.disabled = !it.link; noteBtn.disabled = false;
+        renderFeeds(); renderItems();
+      };
+      itemList.append(li);
+    }
+  };
+  const refresh = async () => {
+    msg.textContent = t("rss.loading");
+    const failed: string[] = [];
+    await Promise.all(feeds.map(async (fd) => {
+      try { feedItems.set(fd.url, await rss.fetchFeed(fd)); } catch { failed.push(fd.title); }
+    }));
+    msg.textContent = failed.length ? t("rss.failed", { feeds: failed.join(", ") }) : "";
+    renderFeeds(); renderItems();
+  };
+  $("#rss-add").onclick = async () => {
+    const url = (f.feedUrl as HTMLInputElement).value.trim();
+    if (!url) return;
+    msg.textContent = t("rss.loading");
+    try {
+      const fd = await rss.discover(url);
+      if (!feeds.some((x) => x.url === fd.url)) feeds.push(fd);
+      saveFeeds();
+      feedItems.set(fd.url, await rss.fetchFeed(fd));
+      (f.feedUrl as HTMLInputElement).value = "";
+      current = fd.url; msg.textContent = "";
+      renderFeeds(); renderItems();
+    } catch (e: any) { msg.textContent = e?.message === "not-found" ? t("rss.notFound") : String(e?.message ?? e); }
+  };
+  (f.feedUrl as HTMLInputElement).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#rss-add").click(); } };
+  $("#rss-refresh").onclick = refresh;
+  // linki w artykule otwieramy w przeglądarce systemowej, nie w oknie aplikacji
+  article.onclick = (e) => {
+    const a = (e.target as HTMLElement).closest("a");
+    if (a?.href) { e.preventDefault(); openUrl(a.href).catch(() => {}); }
+  };
+  openBtn.onclick = () => { if (chosen?.link) openUrl(chosen.link).catch(() => {}); };
+  noteBtn.onclick = async () => {
+    if (!chosen) return;
+    if (!vault.root) { await pickRoot(); if (!vault.root) return; }
+    const it = chosen, feedTitle = feeds.find((x) => x.url === it.feed)?.title ?? it.feed;
+    const name = (it.title || "Źródło").replace(/[\\/:*?"<>|#^\[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+    await leaveCurrent();
+    const note = await vault.create(`${t("rss.sources")}/${name}`);
+    const meta = [`[${feedTitle}](${it.link || it.feed})`, it.author, it.date?.toLocaleDateString(uiLang())].filter(Boolean).join(" · ");
+    const body = rss.htmlToMarkdown(it.html).split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
+    await writeTextFile(note.path, `# ${it.title || name}\n\n${t("rss.from")}: ${meta}\n\n${body}\n\n## ${t("rss.myThoughts")}\n\n`);
+    await refreshVault();
+    dlg.close();
+    await openPath(note.path, true);
+    const end = editor.view.state.doc.length;
+    editor.view.dispatch({ selection: { anchor: end } });
+    editor.view.focus();
+  };
+  renderFeeds(); renderItems();
+  dlg.showModal();
+  if (feeds.length && !feedItems.size) await refresh();
 }
 
 // ---------- Historia wersji ----------
@@ -1147,6 +1267,8 @@ function applyLanguage() {
   store = await load("settings.json", { autoSave: true, defaults: {} });
   await sync.init();
   gitRemote = (await store.get<string>("gitRemote")) ?? "";
+  feeds = (await store.get<rss.Feed[]>("rssFeeds")) ?? [];
+  readItems = new Set((await store.get<string[]>("rssRead")) ?? []);
   publishCfg = { ...publishCfg, ...((await store.get<typeof publishCfg>("publishCfg")) ?? {}) };
   settings = migrateSettings(await store.get("settings"));
   langPrefs = { ...langPrefs, ...((await store.get<typeof langPrefs>("language")) ?? {}) };
