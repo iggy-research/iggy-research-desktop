@@ -969,6 +969,19 @@ const isSynced = (rel: string) => !syncExcluded.some((e) => (e.endsWith("/") ? r
 
 function renderSyncScope() {
   const box = $("#sync-scope");
+  // kopie wyłączonych notatek, które już są na serwerze
+  const purge = $("#sync-purge") as HTMLButtonElement;
+  sync.excludedOnServer().then((rels) => {
+    purge.hidden = !rels.length;
+    purge.textContent = t("sync.purge", { n: rels.length });
+    purge.onclick = async () => {
+      if (!(await ask(t("sync.purgeConfirm", { n: rels.length }), { title: "Iggy Research", kind: "warning" }))) return;
+      purge.disabled = true;
+      try { const n = await sync.purgeExcluded(); $("#sync-msg").textContent = t("sync.purged", { n }); }
+      catch (e: any) { $("#sync-msg").textContent = String(e?.message ?? e); }
+      finally { purge.disabled = false; renderSyncScope(); }
+    };
+  }).catch(() => { purge.hidden = true; });
   box.innerHTML = "";
   if (!vault.root || !vault.notes.length) { box.innerHTML = `<p class="hint">${escapeHtml(t("sync.noRoot"))}</p>`; return; }
   const groups = new Map<string, Note[]>();

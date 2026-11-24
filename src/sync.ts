@@ -138,6 +138,24 @@ export class Sync {
   get e2eUnlocked() { return !!this.keys; }
 
   // ---------- Synchronizacja ----------
+  /** Ile notatek wysłanych wcześniej jest teraz wyłączonych z synchronizacji (ich kopie są na serwerze). */
+  async excludedOnServer(): Promise<string[]> {
+    const state = await this.d.store().get<SyncState>("syncState");
+    return state ? Object.keys(state.files).filter((rel) => !this.d.included(rel)) : [];
+  }
+
+  /** Usuwa z serwera kopie wyłączonych notatek (bez rekordu usunięcia — inne urządzenia zachowują pliki). */
+  async purgeExcluded(): Promise<number> {
+    const state = await this.d.store().get<SyncState>("syncState");
+    if (!state) return 0;
+    const rels = Object.keys(state.files).filter((rel) => !this.d.included(rel));
+    if (!rels.length) return 0;
+    await this.api("sync/purge", { method: "POST", body: JSON.stringify({ keys: rels.map((r) => state.files[r].key) }) });
+    for (const r of rels) delete state.files[r]; // po ponownym włączeniu wyślą się jako nowe
+    await this.d.store().set("syncState", state);
+    return rels.length;
+  }
+
   /** Po poszerzeniu zakresu: pobierz wszystko od początku (wersje, które już mamy, zostaną pominięte). */
   async rewind() {
     const state = await this.d.store().get<SyncState>("syncState");
