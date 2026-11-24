@@ -3,8 +3,9 @@ import { t, uiLang } from "./i18n";
 import { DOC_LANGS } from "./lang";
 
 /** Zadania AI; każde może mieć własny model. Puste = taki jak do analizy akapitu. */
-export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past";
-export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past"];
+export type Task = "analyze" | "summary" | "links" | "cliche" | "devil" | "past"
+  | "claim" | "assumptions" | "lay" | "starter" | "precheck";
+export const TASK_LIST: Task[] = ["analyze", "summary", "links", "cliche", "devil", "past", "claim", "assumptions", "lay", "starter", "precheck"];
 export const taskLabel = (task: Task) => t(`task.${task}`);
 
 export interface AiSettings {
@@ -57,6 +58,25 @@ Odpowiedz w Markdown, w języku tekstu:
     past: `Widzisz fragmenty starszych notatek autora. Porównaj z nimi bieżący tekst i wskaż miejsca, gdzie autor wcześniej myślał inaczej: sprzeczności, zmiany zdania, napięcia albo dawne argumenty, których dziś brakuje. Nie oceniaj, która wersja jest lepsza.
 Dla każdego: **[[Nazwa notatki]]** — co tam twierdziłeś (krótki cytat) → co twierdzisz teraz → pytanie, które z tego wynika. Maks. 5. Używaj WYŁĄCZNIE nazw z listy, dokładnie w zapisie [[Nazwa]].
 Jeśli nie ma realnych rozbieżności, napisz to wprost — niczego nie wymyślaj. Odpowiadaj w języku tekstu, w Markdown.`,
+    claim: `Przeczytaj tekst i odpowiedz w Markdown, w języku tekstu:
+1. **Co tu właściwie twierdzisz** — teza w JEDNYM zdaniu, tak jak zrozumie ją uważny czytelnik.
+2. **Czy tekst jej broni** — jedno, dwa zdania: które fragmenty ją wspierają, a które ciągną gdzie indziej.
+Nie poprawiaj tekstu i nie proponuj nowej tezy. Jeśli tekst ma kilka konkurujących tez, wymień je krótko — to sygnał dla autora.`,
+    assumptions: `Wypisz założenia, które tekst przyjmuje bez uzasadnienia — rzeczy, które muszą być prawdą, żeby rozumowanie działało.
+Każde jako pytanie do autora: **Zakładasz, że …** — czy na pewno? (jedno zdanie, dlaczego to warto sprawdzić).
+Maks. 5, od najważniejszego. Nie oceniaj, nie poprawiaj. Odpowiadaj w języku tekstu, w Markdown.`,
+    lay: `Czytasz jako inteligentny laik spoza tej dziedziny. Wskaż miejsca, w których się gubisz: żargon bez wyjaśnienia, skróty myślowe, przeskoki, odwołania do rzeczy, których nie znasz.
+Nie poprawiaj ich. Odpowiedz WYŁĄCZNIE tablicą JSON, bez Markdown:
+[{"quote": "fragment skopiowany z tekstu znak w znak", "why": "co dokładnie jest niejasne dla laika"}]
+Maks. 8 pozycji. Pole "why" w języku tekstu. Jeśli wszystko jest jasne, zwróć [].`,
+    starter: `Autor zaczyna pisać na temat z tytułu i początku notatki. Zamiast konspektu zadaj 5 pytań, na które odpowiedzi staną się tekstem:
+od „co naprawdę myślisz” przez „skąd to wiesz” i „co by cię przekonało, że się mylisz” po „dlaczego to ważne dla czytelnika”.
+Odpowiedz WYŁĄCZNIE listą 5 pytań w Markdown (1. … 5.), każde jedno zdanie, w języku notatki. Bez wstępu i bez podpowiedzi odpowiedzi.`,
+    precheck: `Kontrola przed publikacją. Nie oceniaj stylu i nie przepisuj tekstu. Wypisz w Markdown, w języku tekstu:
+**Do sprawdzenia** — fakty, liczby, daty, nazwiska i cytaty, które warto zweryfikować (cytuj fragment).
+**Niespójności** — miejsca, gdzie tekst przeczy sam sobie albo zmienia nazewnictwo.
+**Literówki i błędy** — konkretne, z poprawną formą.
+Jeśli w danej grupie nic nie ma, napisz „brak”.`,
   },
   en: {
     analyze: `You are an editor. Review the given paragraph (in the context of the whole text) for:
@@ -84,6 +104,25 @@ Reply in Markdown, in the text's language:
     past: `You can see excerpts from the author's older notes. Compare the current text with them and point out where the author used to think differently: contradictions, changes of mind, tensions, or old arguments missing today. Do not judge which version is better.
 For each: **[[Note name]]** — what you claimed there (short quote) → what you claim now → the question this raises. At most 5. Use ONLY names from the list, written exactly as [[Name]].
 If there are no real differences, say so plainly — do not invent any. Reply in the text's language, in Markdown.`,
+    claim: `Read the text and reply in Markdown, in the text's language:
+1. **What you are actually claiming** — the thesis in ONE sentence, as an attentive reader would understand it.
+2. **Does the text defend it** — one or two sentences: which parts support it and which pull elsewhere.
+Do not fix the text or propose a new thesis. If there are several competing theses, list them briefly — that is a signal for the author.`,
+    assumptions: `List the assumptions the text takes for granted — things that must be true for the reasoning to work.
+Each as a question to the author: **You assume that …** — are you sure? (one sentence on why it is worth checking).
+At most 5, most important first. Do not judge or fix. Reply in the text's language, in Markdown.`,
+    lay: `You read as an intelligent layperson outside this field. Point out where you get lost: unexplained jargon, mental shortcuts, jumps, references to things you don't know.
+Do not fix them. Reply ONLY with a JSON array, no Markdown:
+[{"quote": "fragment copied from the text character for character", "why": "what exactly is unclear to a layperson"}]
+At most 8 items. Write "why" in the text's language. If everything is clear, return [].`,
+    starter: `The author is starting to write on the topic from the note's title and beginning. Instead of an outline, ask 5 questions whose answers will become the text:
+from "what do you really think" through "how do you know" and "what would convince you that you are wrong" to "why it matters to the reader".
+Reply ONLY with a Markdown list of 5 questions (1. … 5.), one sentence each, in the note's language. No intro and no hints at answers.`,
+    precheck: `Pre-publication check. Do not judge style or rewrite the text. List in Markdown, in the text's language:
+**To verify** — facts, numbers, dates, names and quotes worth checking (quote the fragment).
+**Inconsistencies** — places where the text contradicts itself or changes naming.
+**Typos and errors** — specific, with the correct form.
+If a group is empty, write "none".`,
   },
 };
 
@@ -96,7 +135,8 @@ export const isDefaultPrompt = (p: string) =>
 
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
-  models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "" },
+  models: { analyze: "anthropic/claude-sonnet-5.5", summary: "", links: "", cliche: "", devil: "", past: "",
+    claim: "", assumptions: "", lay: "", starter: "", precheck: "" },
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
@@ -220,3 +260,9 @@ export function parseCliches(raw: string): { quote: string; why: string }[] | nu
       .map((x) => ({ quote: x.quote.trim(), why: String(x.why ?? "").trim() })) : null;
   } catch { return null; }
 }
+
+/** Narzędzia na tekście (zaznaczenie / akapit / notatka) bez specjalnego kontekstu — jeden wzorzec wywołania. */
+export const textTool = (s: AiSettings, task: Exclude<Task, "analyze" | "summary" | "links" | "past" | "devil">,
+  docLang: string | null, target: string, doc: string, onToken: (full: string) => void) =>
+  chat(s, task, docLang, defaultPrompt(task, docLang),
+    `${target === doc ? "" : `CONTEXT (whole note, truncated):\n${doc.slice(0, 6000)}\n\n`}TEXT:\n${target.slice(0, 16000)}`, onToken);

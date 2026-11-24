@@ -375,3 +375,12 @@ dialog label.scope-note { padding-left: 22px; }
 .sync-advanced { margin: 0 0 12px; font-size: 12px; }
 .sync-advanced summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
 dialog input.code-input { font-family: var(--font-body); font-size: 20px; letter-spacing: .4em; text-align: center; }
+
+/* Menu „Więcej” w panelu AI i podkreślenia czytelnika-amatora */
+.ai-more { position: relative; }
+#ai-more-menu { position: absolute; top: 100%; left: 0; z-index: 10; display: flex; flex-direction: column; min-width: 220px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+#ai-more-menu[hidden] { display: none; }
+#ai-more-menu button { text-align: left; padding: 6px 10px; font-size: 12px; border-radius: 5px; }
+#ai-more-menu button:hover { background: var(--panel); }
+.cm-lay { text-decoration: underline dotted color-mix(in srgb, var(--accent) 85%, transparent); text-decoration-thickness: 2px; text-underline-offset: 4px; }

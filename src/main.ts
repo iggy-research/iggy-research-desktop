@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
@@ -131,14 +131,21 @@ $("#ai-links").onclick = () => runNoteTask("links");
 $("#ai-cliche").onclick = () => runCliches();
 $("#ai-devil").onclick = () => runDevil();
 $("#ai-past").onclick = () => runPast();
+const moreMenu = $("#ai-more-menu");
+$("#ai-more").onclick = (e) => { e.stopPropagation(); moreMenu.hidden = !moreMenu.hidden; };
+document.addEventListener("click", () => { moreMenu.hidden = true; });
+moreMenu.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((b) => (b.onclick = () => {
+  moreMenu.hidden = true;
+  runTool(b.dataset.tool as Parameters<typeof runTool>[0]);
+}));
 
 /** Wspólny przebieg zadania AI na żądanie: tytuł, status z nazwą modelu, błędy, historia. */
-async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cur: HTMLElement) => Promise<string | null>) {
+async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cur: HTMLElement) => Promise<string | null>, allowShort = false) {
   ui.ai = true; apply();
   const cur = $("#ai-current"), status = $("#ai-status");
   $("#ai-title").textContent = taskLabel(task);
   cur.classList.remove("ai-empty");
-  if (editor.getContent().trim().length < 40) { cur.textContent = t("ai.tooShort"); return; }
+  if (!allowShort && editor.getContent().trim().length < 40) { cur.textContent = t("ai.tooShort"); return; }
   const missing = missingConfig(settings, task);
   if (missing) { cur.textContent = missing; return; }
   status.textContent = `${t(statusKey)} · ${modelInfo(modelFor(settings, task)).name}`;
@@ -146,7 +153,7 @@ async function runTask(task: Task, statusKey: Parameters<typeof t>[0], body: (cu
   try {
     const result = await body(cur);
     if (result !== null) pushHistory(`${taskLabel(task)}: ${currentNoteName()}`, result);
-    telemetry.track(task === "cliche" ? "ai.cliche" : task === "devil" ? "ai.devil" : "ai.past");
+    telemetry.track(`ai.${task}` as Parameters<typeof telemetry.track>[0]);
     status.textContent = "";
   } catch (e: any) {
     if (e?.name === "AbortError") return;
@@ -162,10 +169,18 @@ function runCliches() {
     const raw = await findCliches(settings, docLang(), doc, () => {});
     const items = parseCliches(raw);
     if (!items) { cur.textContent = t("ai.clicheBad"); return null; }
+    return showQuotes(cur, doc, items, "cm-cliche", "ai.clicheFound", "ai.clicheNone");
+  });
+}
+
+/** Lista cytatów z powodem + podkreślenia w edytorze (banały, czytelnik-amator). */
+function showQuotes(cur: HTMLElement, doc: string, items: { quote: string; why: string }[], cls: string,
+  foundKey: Parameters<typeof t>[0], noneKey: Parameters<typeof t>[0]): string {
+  {
     const found = items.map((c) => ({ ...c, at: locate(doc, c.quote) }));
-    editor.view.dispatch({ effects: setCliches.of(found.filter((c) => c.at).map((c) => ({ ...c.at!, why: c.why }))) });
-    if (!found.length) { cur.textContent = t("ai.clicheNone"); return t("ai.clicheNone"); }
-    cur.innerHTML = `<p>${escapeHtml(t("ai.clicheFound", { n: found.length }))}</p><ol class="cliche-list">${found.map((c, i) =>
+    editor.view.dispatch({ effects: setCliches.of(found.filter((c) => c.at).map((c) => ({ ...c.at!, why: c.why, cls }))) });
+    if (!found.length) { cur.textContent = t(noneKey); return t(noneKey); }
+    cur.innerHTML = `<p>${escapeHtml(t(foundKey, { n: found.length }))}</p><ol class="cliche-list">${found.map((c, i) =>
       `<li data-i="${i}" class="${c.at ? "" : "missing"}"><q>${escapeHtml(c.quote)}</q><small>${escapeHtml(c.why)}${c.at ? "" : " " + escapeHtml(t("ai.clicheMissing"))}</small></li>`).join("")}</ol>` +
       `<button type="button" class="cliche-clear">${escapeHtml(t("ai.clicheClear"))}</button>`;
     cur.querySelectorAll<HTMLLIElement>(".cliche-list li").forEach((li) => (li.onclick = () => {
@@ -179,7 +194,47 @@ function runCliches() {
       cur.querySelector(".cliche-clear")?.remove();
     };
     return found.map((c) => `- „${c.quote}” — ${c.why}`).join("\n");
-  });
+  }
+}
+
+/** Fragment, na którym działa narzędzie: zaznaczenie, bieżący akapit (gdy dłuższy) albo cała notatka. */
+function toolTarget(paragraphOk: boolean) {
+  const doc = editor.getContent(), sel = editor.view.state.selection.main;
+  if (!sel.empty && sel.to - sel.from > 20) return { doc, target: doc.slice(sel.from, sel.to), scope: t("ai.devilSelection") };
+  const p = paragraphAt(editor.view.state.doc, sel.head);
+  if (paragraphOk && p && p.text.trim().length >= 80) return { doc, target: p.text.trim(), scope: t("ai.devilParagraph") };
+  return { doc, target: doc, scope: t("ai.devilNote") };
+}
+
+/** Narzędzia z menu „Więcej”. */
+function runTool(task: "claim" | "assumptions" | "lay" | "starter" | "precheck") {
+  return runTask(task, "ai.working", async (cur) => {
+    const { doc, target, scope } = toolTarget(task === "assumptions");
+    if (task === "lay") {
+      const raw = await textTool(settings, "lay", docLang(), target, doc, () => {});
+      const items = parseCliches(raw);
+      if (!items) { cur.textContent = t("ai.clicheBad"); return null; }
+      return showQuotes(cur, doc, items, "cm-lay", "ai.layFound", "ai.layNone");
+    }
+    const head = task === "starter" ? "" : `<p class="hint">${escapeHtml(scope)}</p>`;
+    const source = task === "starter" ? `${currentNoteName()}\n\n${doc.slice(0, 3000)}` : target;
+    const result = await textTool(settings, task, docLang(), source, task === "starter" ? source : doc, (partial) => { cur.innerHTML = head + renderAi(partial); });
+    if (task === "starter") {
+      // pytania wstawiamy jako szkielet do odpowiedzi — tekst pisze autor
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.textContent = t("ai.starterInsert");
+      btn.onclick = () => {
+        const qs = result.split("\n").map((l) => l.trim()).filter((l) => /^\d+[.)]\s/.test(l)).map((l) => `### ${l.replace(/^\d+[.)]\s*/, "")}\n\n`);
+        const end = editor.view.state.doc.length;
+        const insert = `${end ? "\n\n" : ""}## ${t("ai.starterHeading")}\n\n${qs.join("")}`;
+        editor.view.dispatch({ changes: { from: end, insert }, selection: { anchor: end + insert.length } });
+        editor.view.focus();
+        btn.remove();
+      };
+      cur.append(btn);
+    }
+    return result;
+  }, task === "starter");
 }
 
 /** Adwokat diabła: zaznaczenie, a bez niego bieżący akapit (albo cała notatka, gdy akapit jest krótki). */

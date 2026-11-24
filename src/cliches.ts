@@ -2,7 +2,7 @@
 import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 
-export interface Cliche { from: number; to: number; why: string }
+export interface Cliche { from: number; to: number; why: string; cls?: string }
 
 export const setCliches = StateEffect.define<Cliche[]>();
 
@@ -14,7 +14,7 @@ export const clicheField = StateField.define<DecorationSet>({
       if (!e.is(setCliches)) continue;
       const b = new RangeSetBuilder<Decoration>();
       for (const c of [...e.value].sort((a, z) => a.from - z.from)) {
-        b.add(c.from, c.to, Decoration.mark({ class: "cm-cliche", attributes: { title: c.why } }));
+        b.add(c.from, c.to, Decoration.mark({ class: c.cls ?? "cm-cliche", attributes: { title: c.why } }));
       }
       deco = b.finish();
     }
