@@ -245,8 +245,9 @@ function scheduleAutosave() {
   const p = filePath;
   saveTimer = window.setTimeout(async () => {
     if (p === filePath && dirty && (await exists(p))) await saveFile();
-  }, 800);
+  }, AUTOSAVE_IDLE_MS);
 }
+const AUTOSAVE_IDLE_MS = 1500; // zapis po chwili bezczynności, nie po każdym znaku
 /** Przed przejściem do innego pliku: zapisz bieżący. Zwraca false, gdy użytkownik anulował. */
 async function leaveCurrent(): Promise<boolean> {
   clearTimeout(saveTimer);
@@ -828,4 +829,19 @@ function openSettings() {
   }
 })();
 
-window.addEventListener("beforeunload", (e) => { if (dirty) e.preventDefault(); });
+// Zamknięcie okna: autozapis zapisuje bez pytania, w pozostałych przypadkach pytamy o niezapisane zmiany
+getCurrentWindow().onCloseRequested(async (e) => {
+  clearTimeout(saveTimer);
+  if (!dirty) return;
+  e.preventDefault();
+  try {
+    if (filePath && autosave && (await exists(filePath))) await saveFile();
+    else if (filePath || editor.getContent().trim()) {
+      const keep = await ask("Bieżące zmiany nie są zapisane. Zapisać je przed zamknięciem?", {
+        title: "Iggy Research", kind: "warning", okLabel: "Zapisz", cancelLabel: "Zamknij bez zapisu",
+      });
+      if (keep) { await saveFile(); if (dirty) return; } // anulowane okno „Zapisz jako” = zostajemy
+    }
+  } catch (err) { console.error(err); }
+  await getCurrentWindow().destroy();
+});
