@@ -11,7 +11,7 @@ import { readTextFile, writeTextFile, writeFile, copyFile, rename, exists, mkdir
 import { load, Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEditor, paragraphAt, Paragraph, FocusMode } from "./editor";
-import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt } from "./ai";
+import { analyzeParagraph, summarizeNote, suggestLinks, findCliches, devilsAdvocate, pastSelf, parseCliches, textTool, socraticTurn, ChatMessage, notesTool, AiSettings, DEFAULT_SETTINGS, migrateSettings, missingConfig, modelFor, setOnModelUsed, Task, TASK_LIST, taskLabel, defaultPrompt, isDefaultPrompt, analyzePrompt } from "./ai";
 import { t, setUiLang, applyI18n, uiLang, UI_LANGS } from "./i18n";
 import { detectLanguage, DOC_LANGS } from "./lang";
 import { Sync } from "./sync";
@@ -1011,7 +1011,7 @@ function renderSyncScope() {
 
 /** Ustawienia, które jadą między urządzeniami (klucz API zostaje lokalnie). */
 const syncedSettings = () => ({
-  ai: { models: settings.models, prompt: settings.prompt, debounceMs: settings.debounceMs, autoAnalyze: settings.autoAnalyze },
+  ai: { models: settings.models, prompt: settings.prompt, debounceMs: settings.debounceMs, autoAnalyze: settings.autoAnalyze, reviewMode: settings.reviewMode },
   appearance, language: langPrefs, autosave, modelFavorites: [...modelFavorites],
 });
 async function applySyncedSettings(r: Record<string, any>) {
@@ -1570,7 +1570,13 @@ function openSettings() {
   renderRows();
   (f.debounceMs as HTMLInputElement).value = String(settings.debounceMs);
   // Pusty prompt = domyślny w języku dokumentu; pokazujemy go, żeby było co edytować
-  (f.prompt as HTMLTextAreaElement).value = settings.prompt || defaultPrompt("analyze", docLang());
+  (f.prompt as HTMLTextAreaElement).value = settings.prompt || analyzePrompt(settings, docLang());
+  (f.reviewMode as HTMLSelectElement).value = settings.reviewMode;
+  // zmiana trybu podmienia pokazany prompt domyślny (własny zostaje)
+  (f.reviewMode as HTMLSelectElement).onchange = () => {
+    const ta = f.prompt as HTMLTextAreaElement;
+    if (!ta.value.trim() || isDefaultPrompt(ta.value)) ta.value = analyzePrompt({ ...settings, reviewMode: (f.reviewMode as HTMLSelectElement).value as "point" | "fix" }, docLang());
+  };
   // Język
   const uiSel = f.uiLang as HTMLSelectElement, docSel = f.docLang as HTMLSelectElement;
   uiSel.innerHTML = `<option value="auto">${t("set.uiLangAuto")}</option>` +
@@ -1599,6 +1605,7 @@ function openSettings() {
       debounceMs: Number(f.debounceMs.value) || DEFAULT_SETTINGS.debounceMs,
       prompt: isDefaultPrompt(f.prompt.value) ? "" : f.prompt.value.trim(),
       autoAnalyze: f.autoAnalyze.checked,
+      reviewMode: (f.reviewMode as HTMLSelectElement).value as "point" | "fix",
     };
     autosave = (f.autosave as HTMLInputElement).checked;
     await telemetry.setEnabled((f.telemetry as HTMLInputElement).checked);

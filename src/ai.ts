@@ -14,6 +14,8 @@ export interface AiSettings {
   prompt: string;
   debounceMs: number;
   autoAnalyze: boolean;
+  /** Analiza akapitu: "point" = tylko wskazuje problemy (zasada nr 2), "fix" = z gotowymi poprawkami „przed → po”. */
+  reviewMode: "point" | "fix";
   local: { ollama: boolean; lmstudio: boolean };
   localUrls: { ollama: string; lmstudio: string };
 }
@@ -148,12 +150,31 @@ If a group is empty, write "none".`,
   },
 };
 
+// Analiza akapitu w trybie „tylko wskazuj”: problem i powód, bez gotowego zdania — tekst poprawia autor
+const POINT_ONLY = {
+  pl: `Jesteś redaktorem. Przeczytaj akapit (w kontekście całego tekstu) i WSKAŻ problemy, ale ich nie poprawiaj:
+- poprawność językowa (gramatyka, interpunkcja, literówki),
+- jasność i zwięzłość (zbędne słowa, strona bierna, powtórzenia),
+- spójność z resztą tekstu.
+Odpowiedz krótko w Markdown: jedna linia oceny, potem maks. 5 punktów: „cytowany fragment” — co jest nie tak i dlaczego.
+Nie podawaj poprawionych wersji zdań (wyjątek: literówki i oczywiste błędy). Odpowiadaj w języku akapitu.`,
+  en: `You are an editor. Read the paragraph (in the context of the whole text) and POINT OUT problems without fixing them:
+- correctness (grammar, punctuation, typos),
+- clarity and concision (filler words, passive voice, repetition),
+- consistency with the rest of the text.
+Reply briefly in Markdown: a one-line verdict, then at most 5 bullets: “quoted fragment” — what is wrong and why.
+Do not give rewritten sentences (except typos and obvious errors). Reply in the paragraph's language.`,
+};
+
 /** Domyślny prompt zadania dla języka dokumentu. */
 export const defaultPrompt = (task: Task, docLang: string | null) =>
   PROMPTS[(docLang ?? uiLang()) === "pl" ? "pl" : "en"][task];
 /** Czy tekst to któryś z domyślnych promptów (wtedy zapisujemy "", żeby dopasowywał się do języka). */
 export const isDefaultPrompt = (p: string) =>
-  Object.values(PROMPTS).some((byTask) => byTask.analyze.trim() === p.trim());
+  [...Object.values(PROMPTS).map((byTask) => byTask.analyze), ...Object.values(POINT_ONLY)].some((d) => d.trim() === p.trim());
+/** Domyślny prompt analizy akapitu zależnie od trybu. */
+export const analyzePrompt = (s: AiSettings, docLang: string | null) =>
+  s.reviewMode === "fix" ? defaultPrompt("analyze", docLang) : POINT_ONLY[(docLang ?? uiLang()) === "pl" ? "pl" : "en"];
 
 export const DEFAULT_SETTINGS: AiSettings = {
   apiKey: "",
@@ -162,6 +183,7 @@ export const DEFAULT_SETTINGS: AiSettings = {
   prompt: "", // "" = domyślny w języku dokumentu
   debounceMs: 1500,
   autoAnalyze: true,
+  reviewMode: "point",
   local: { ollama: false, lmstudio: false },
   localUrls: { ollama: "", lmstudio: "" },
 };
@@ -248,7 +270,7 @@ async function chat(s: AiSettings, task: Task, docLang: string | null, system: s
 }
 
 export const analyzeParagraph = (s: AiSettings, docLang: string | null, paragraph: string, context: string, onToken: (full: string) => void) =>
-  chat(s, "analyze", docLang, s.prompt.trim() || defaultPrompt("analyze", docLang),
+  chat(s, "analyze", docLang, s.prompt.trim() || analyzePrompt(s, docLang),
     `CONTEXT (whole document, truncated):\n${context.slice(0, 6000)}\n\nPARAGRAPH TO REVIEW:\n${paragraph}`, onToken);
 
 export const summarizeNote = (s: AiSettings, docLang: string | null, doc: string, onToken: (full: string) => void) =>
