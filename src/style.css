@@ -246,8 +246,6 @@ button.primary { background: var(--accent); color: #fff; }
 #wordmark em { font-style: italic; }
 
 /* Ulubione */
-#fav-star { padding: 3px 6px; line-height: 0; }
-#fav-star svg { display: block; }
 #fav-star.on svg { fill: currentColor; }
 #fav-star.on { color: #f5b82e; }
 #toolbar > #fav-star.on { opacity: 1; }
@@ -353,3 +351,8 @@ dialog.wide { width: min(900px, 94vw); }
 #rss-article { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
 #rss-article img { max-width: 100%; height: auto; }
 #rss-article h3 { font-family: var(--serif-display); font-size: 1.6em; font-weight: 400; margin: 6px 0; text-transform: none; letter-spacing: 0; color: var(--fg); }
+
+/* Ikony paska: SVG w jednym rozmiarze i grubości linii (znaki Unicode miały różne, za małe rozmiary) */
+#toolbar .icon-btn { padding: 4px 6px; line-height: 0; }
+#toolbar .tb-icon { display: block; width: 17px; height: 17px; }
+#toolbar #fav-star .tb-icon { width: 16px; height: 16px; }

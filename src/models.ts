@@ -64,7 +64,7 @@ export function endpointFor(key: string, apiKey: string, localUrls: Record<strin
       url: `${OPENROUTER_URL}/chat/completions`, model: id,
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/rafalgawlik/iggy-research",
+        "HTTP-Referer": "https://iggy-research.com",
         "X-Title": "Iggy Research",
       },
     };

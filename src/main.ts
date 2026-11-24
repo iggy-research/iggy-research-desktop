@@ -775,7 +775,7 @@ function openSync() {
     try { await fn(); } catch (e: any) { msg.textContent = String(e?.message ?? e); }
     finally { dlg.querySelectorAll("button").forEach((b) => (b.disabled = false)); }
   };
-  (f.server as HTMLInputElement).value = sync.account?.server ?? ((f.server as HTMLInputElement).value || "");
+  (f.server as HTMLInputElement).value = sync.account?.server ?? ((f.server as HTMLInputElement).value || DEFAULT_SERVER);
   (f.gitRemote as HTMLInputElement).value = gitRemote;
   const login = (register: boolean) => run(async () => {
     const server = f.server.value.trim(), email = f.email.value.trim(), password = f.password.value;
@@ -828,6 +828,7 @@ function openSync() {
   dlg.showModal();
 }
 let gitRemote = "";
+const DEFAULT_SERVER = "https://iggy-research.com"; // własny serwer można wpisać zamiast niego
 
 // ---------- Publikacja ----------
 /** Rozwiązywanie osadzeń względem dowolnej notatki (jak podgląd, ale nie tylko dla otwartego pliku). */
